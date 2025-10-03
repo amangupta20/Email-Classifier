@@ -49,7 +49,7 @@
 - [x] T001 Create project structure per plan.md: Create `backend/`, `frontend/`, `docker-compose.yml`, `.env.example`, `README.md`, `pyproject.toml`, `package.json` in root.
 - [x] T002 Initialize Python backend with dependencies: Install FastAPI, SQLAlchemy, Pydantic v2, Alembic, asyncpg, ollama, qdrant-client, imap-tools, APScheduler, prometheus-client, structlog, cryptography, tenacity, httpx from requirements.txt in `backend/`.
 - [x] T003 Setup Docker Compose for Ollama (GPU), PostgreSQL, Qdrant, Prometheus, Grafana in `docker-compose.yml`, including environment variables and volume mounts for self-hosted Supabase option.
-- [ ] T004 [P] Configure Python linting and formatting: Setup ruff, black, pre-commit hooks in `backend/pyproject.toml` and `.pre-commit-config.yaml`.
+- [x] T004 [P] Configure Python linting and formatting: Setup ruff, black, pre-commit hooks in `backend/pyproject.toml` and `.pre-commit-config.yaml`.
 - [ ] T005 [P] Initialize frontend React app with Vite: Create `frontend/package.json`, install React, Recharts, Axios, date-fns, setup ESLint, Prettier in `frontend/.eslintrc.js` and `frontend/prettier.config.js`.
 - [ ] T006 Setup Alembic database migrations: Configure `backend/alembic.ini`, create migration environment in `backend/src/database/migrations/env.py`, prepare initial schema migration.
 - [ ] T007 [P] Create configuration loader: Implement `backend/src/config.py` using Pydantic Settings to load `.env` with validation for all env vars (DB_URL, OLLAMA_HOST, QDRANT_HOST, IMAP settings, etc.).
