@@ -6,55 +6,66 @@
 
 ## Executive Summary
 
-This document captures technology research and decisions for implementing a local-first email classification system using Python 3.11+. All choices prioritize: (1) local execution privacy, (2) performance targets (<5s median latency), (3) simplicity per constitution, (4) resume-worthy modern tech stack.
+This document captures technology research and decisions for implementing a local-first email classification system using Python 3.11+. All choices prioritize: (1) local execution privacy with GPU acceleration, (2) performance targets (<5s median latency), (3) simplicity per constitution, (4) resume-worthy modern tech stack with self-hosting experience including Supabase and Convex options.
 
 ---
 
 ## 1. Python LLM Integration for Qwen 3 8B
 
-### Decision: **llama-cpp-python**
+### Decision: **Ollama**
 
 ### Rationale:
 
-- **Local execution**: Pure C++ with Python bindings, no external API dependencies
-- **Performance**: GGUF quantization enables 8B model in <1.2GB RAM, inference ~2-8s depending on context length
-- **Python integration**: Clean async API, context manager support, streaming generation
-- **Active maintenance**: Regular updates for latest llama.cpp features
-- **Constitutional alignment**: Deterministic outputs with temperature=0.1, structured JSON mode support
+- **GPU acceleration**: Native CUDA/ROCm support without manual configuration, dramatically improves inference speed
+- **Model management**: Simple `ollama pull qwen3:8b` - no manual GGUF downloads or path management
+- **Docker-friendly**: Official Docker images with GPU passthrough, simplifies deployment
+- **OpenAI-compatible API**: Python client with clean async interface, easy integration
+- **Production-ready**: Handles model loading, unloading, concurrent requests automatically
+- **Flexibility**: Can run models locally or point to remote Ollama instance for distributed setups
+- **Constitutional alignment**: Supports temperature settings, JSON mode, streaming
 
 ### Alternatives Considered:
 
-| Option                | Pros                                               | Cons                                                | Verdict                     |
-| --------------------- | -------------------------------------------------- | --------------------------------------------------- | --------------------------- |
-| **llama-cpp-python**  | Fast C++ core, low memory, GGUF support, JSON mode | Requires compilation (but has wheels)               | ✅ **Selected**             |
-| **vLLM**              | Fastest inference, batching, OpenAI-compatible API | 4GB+ memory overhead, complex setup                 | ❌ Overkill for single-user |
-| **transformers (HF)** | Official model support, easy to use                | Slower inference, higher memory, PyTorch dependency | ❌ Performance concerns     |
-| **ctransformers**     | Simple API, multiple backends                      | Less maintained, limited features vs llama-cpp      | ❌ Ecosystem smaller        |
-| **Ollama**            | User-friendly, model management                    | Extra daemon, not pure Python library               | ❌ Added complexity         |
+| Option                | Pros                                                                   | Cons                                                | Verdict                     |
+| --------------------- | ---------------------------------------------------------------------- | --------------------------------------------------- | --------------------------- |
+| **Ollama**            | GPU acceleration, model management, Docker-friendly, OpenAI-compatible | Requires Ollama daemon                              | ✅ **Selected**             |
+| **llama-cpp-python**  | Fast C++ core, low memory, GGUF support, JSON mode                     | Manual GPU setup, no model management               | ❌ More complex setup       |
+| **vLLM**              | Fastest inference, batching, OpenAI-compatible API                     | 4GB+ memory overhead, complex setup                 | ❌ Overkill for single-user |
+| **transformers (HF)** | Official model support, easy to use                                    | Slower inference, higher memory, PyTorch dependency | ❌ Performance concerns     |
+| **LM Studio**         | GUI, easy model management                                             | Not automation-friendly, Windows/Mac focus          | ❌ Not server-oriented      |
 
 ### Integration Notes:
 
 ```python
-from llama_cpp import Llama
+import ollama
+import asyncio
 
-llm = Llama(
-    model_path=os.getenv("QWEN_MODEL_PATH"),  # GGUF format
-    n_ctx=4096,  # Match LLM_CONTEXT_WINDOW
-    n_threads=4,
-    temperature=0.1,  # Deterministic classification
-    n_gpu_layers=0,  # CPU-only for portability
+# Synchronous API
+response = ollama.chat(
+    model='qwen3:8b',
+    messages=[
+        {'role': 'system', 'content': system_prompt},
+        {'role': 'user', 'content': user_prompt}
+    ],
+    format='json',  # Enforce JSON output
+    options={
+        'temperature': 0.1,  # Deterministic classification
+        'num_ctx': 4096,     # Context window
+    }
 )
 
-# Structured output with JSON schema
-response = llm.create_chat_completion(
-    messages=[{"role": "system", "content": system_prompt},
-              {"role": "user", "content": user_prompt}],
-    response_format={"type": "json_object", "schema": schema_v2},
-    max_tokens=800,
-)
+# Async API (for FastAPI integration)
+async def classify_email_async(prompt: str) -> dict:
+    response = await asyncio.to_thread(
+        ollama.chat,
+        model='qwen3:8b',
+        messages=[{'role': 'user', 'content': prompt}],
+        format='json'
+    )
+    return response['message']['content']
 ```
 
-**Performance validation**: Qwen 3 8B GGUF (Q4_K_M quantization) achieves ~4-6s inference on mid-range CPU (i5/Ryzen 5), meeting <12s p95 target with headroom.
+**Performance validation**: Qwen 3 8B with GPU achieves ~0.5-2s inference (NVIDIA RTX 3060+), meeting <12s p95 with huge headroom. CPU fallback still ~4-6s.
 
 ---
 
@@ -107,58 +118,168 @@ async def get_current_metrics():
 
 ## 3. Vector Store for RAG Retrieval
 
-### Decision: **FAISS (Facebook AI Similarity Search)**
+### Decision: **Qdrant (Primary) with Self-Hosted Supabase pgvector and Convex as Alternatives**
 
-### Rationale:
+### Rationale for Qdrant:
 
-- **Performance**: <50ms p95 retrieval for 10K vectors (exceeds <50ms target)
-- **Feature-rich**: Multiple index types (Flat, IVF, HNSW), quantization, GPU support (optional)
-- **Python bindings**: Official `faiss-cpu` package, clean API
-- **Persistence**: `write_index()` / `read_index()` for weekly snapshots
-- **Production-ready**: Battle-tested at Meta scale, active maintenance
-- **Constitutional alignment**: Supports incremental adds for feedback loop
+- **Purpose-built**: Dedicated vector database with rich filtering capabilities
+- **Performance**: Rust-based, <50ms p95 retrieval, HNSW indexing
+- **Docker-friendly**: Official images, easy self-hosting alongside PostgreSQL
+- **Scalability**: Starts simple, scales to millions of vectors without code changes
+- **Features**: Metadata filtering, hybrid search (vector + filters), snapshots, REST + gRPC APIs
+- **Python SDK**: Clean async client, integrates well with FastAPI
+- **Constitutional alignment**: Incremental updates, atomic operations, snapshots for weekly backups
+- **Learning opportunity**: Industry-standard vector DB experience (resume-worthy)
+
+### Self-Hosted Supabase with pgvector (Recommended Alternative):
+
+Supabase is open-source and fully self-hostable, providing PostgreSQL with built-in pgvector extension for vector search. This consolidates database and vector storage.
+
+**Self-Hosting Setup**:
+
+- Use Docker Compose with official Supabase images
+- Includes PostgreSQL, pgvector, auth, realtime, storage
+- Enable pgvector extension: `CREATE EXTENSION vector;`
+- pgvector supports cosine similarity, L2 distance, inner product
+- Indexes: IVFFlat or HNSW for fast approximate nearest neighbor search
+
+**Integration Notes (Supabase pgvector)**:
+
+```python
+import psycopg2
+from supabase import create_client, Client
+import numpy as np
+
+# Self-hosted Supabase client
+supabase: Client = create_client(
+    supabase_url="http://localhost:8000",
+    supabase_key="your-anon-key"  # Generated locally
+)
+
+# Enable pgvector (run once in SQL editor)
+# CREATE EXTENSION IF NOT EXISTS vector;
+
+# Store embedding (vector column)
+def store_embedding(email_id: str, embedding: np.ndarray, metadata: dict):
+    supabase.table('email_embeddings').insert({
+        'email_id': email_id,
+        'embedding': embedding.tolist(),  # vector(768)
+        'metadata': metadata
+    }).execute()
+
+# Vector search with cosine similarity
+def retrieve_context(query_embedding: np.ndarray, k: int = 5) -> List[dict]:
+    results = supabase.rpc('match_embeddings', {
+        'query_embedding': query_embedding.tolist(),
+        'match_threshold': 0.6,
+        'match_count': k
+    }).execute()
+
+    return [row['metadata'] for row in results.data]
+```
+
+**Docker Compose for Self-Hosted Supabase**:
+
+```yaml
+services:
+  supabase-db:
+    image: supabase/postgres:15.1.0.147
+    environment:
+      POSTGRES_PASSWORD: your_password
+    volumes:
+      - supabase_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  supabase-studio:
+    image: supabase/studio:latest
+    environment:
+      SUPABASE_DB_URL: postgresql://postgres:your_password@supabase-db:5432/postgres
+    ports:
+      - "8000:3000"
+    depends_on:
+      - supabase-db
+
+volumes:
+  supabase_data:
+```
+
+**Pros of Self-Hosted Supabase**:
+
+- **All-in-one**: Database + vector search + auth + realtime in one stack
+- **Cost-free**: Open-source, no vendor lock-in
+- **Learning**: Full self-hosting experience (Docker, PostgreSQL, extensions)
+- **Resume-worthy**: "Self-hosted Supabase with pgvector for RAG"
+
+**Cons**:
+
+- **Performance**: ~2-3x slower than dedicated vector DB for large indexes
+- **Complexity**: More services to manage than simple PostgreSQL
+
+### Convex Self-Hosting (Alternative):
+
+Convex is primarily cloud-based but supports self-hosting via their edge deployment platform (Convex Edge).
+
+**Self-Hosting Approach**:
+
+- Run Convex backend on your infrastructure (Docker/Kubernetes)
+- Use Convex CLI for local development
+- Vector search via Convex's built-in vector indexing
+- Real-time subscriptions for dashboard updates
+
+**Integration Notes (Convex)**:
+
+```python
+from convex import ConvexClient
+import asyncio
+
+client = ConvexClient("http://localhost:3010")  # Self-hosted
+
+# Store embedding
+await client.call("storeEmbedding", {
+    "emailId": email_id,
+    "embedding": embedding.tolist(),
+    "metadata": metadata
+})
+
+# Search
+results = await client.call("searchEmbeddings", {
+    "queryEmbedding": query_embedding.tolist(),
+    "k": 5,
+    "threshold": 0.6
+})
+```
+
+**Docker for Convex Self-Hosting** (Experimental):
+Convex self-hosting is more advanced and may require custom setup. For learning, focus on Supabase which is more mature for self-hosting.
+
+**Pros of Convex Self-Hosting**:
+
+- **Real-time**: Built-in subscriptions for dashboard updates
+- **Serverless-like**: Edge functions, automatic scaling
+- **Integrated**: Database + auth + realtime in one platform
+
+**Cons**:
+
+- **Proprietary**: Less open-source than Supabase
+- **Learning curve**: Edge deployment concepts
+- **Maturity**: Self-hosting less documented than Supabase
 
 ### Alternatives Considered:
 
-| Option              | Pros                                          | Cons                                          | Verdict                          |
-| ------------------- | --------------------------------------------- | --------------------------------------------- | -------------------------------- |
-| **FAISS**           | Fast, feature-rich, incremental, GPU-optional | C++ dependency (but wheels available)         | ✅ **Selected**                  |
-| **Hnswlib**         | Faster than FAISS Flat, simple API            | No quantization, no GPU, less flexible        | ❌ FAISS more features           |
-| **Annoy** (Spotify) | Memory-mapped, read-only fast                 | No incremental adds, rebuild needed           | ❌ Doesn't support feedback      |
-| **ChromaDB**        | Batteries-included, document store            | Heavy (SQLite + embeddings), more than needed | ❌ Over-engineered               |
-| **Milvus/Weaviate** | Distributed, scalable                         | Requires separate service, overkill           | ❌ Single-user doesn't need this |
+| Option                | Pros                                             | Cons                                                   | Verdict                           |
+| --------------------- | ------------------------------------------------ | ------------------------------------------------------ | --------------------------------- |
+| **Qdrant**            | Purpose-built, self-hosted, fast, rich filtering | Separate service (Docker)                              | ✅ **Primary** (best performance) |
+| **Supabase pgvector** | PostgreSQL extension, same DB, self-hostable     | Slower than dedicated, limited filtering               | ✅ **Fallback** (learning focus)  |
+| **Convex**            | Serverless-like, real-time, integrated           | Proprietary, edge deployment complexity                | 🟡 **Alternative** (cloud-hybrid) |
+| **FAISS**             | Fast, library-only, no service                   | Manual persistence, no filtering, no concurrent access | ❌ Too low-level                  |
+| **ChromaDB**          | Batteries-included, document store               | Heavier, SQLite-based, less production-ready           | ❌ Over-engineered                |
 
-### Integration Notes:
-
-```python
-import faiss
-import numpy as np
-from sentence_transformers import SentenceTransformer
-
-# Initialize
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-dimension = 384  # all-MiniLM-L6-v2 output size
-index = faiss.IndexFlatL2(dimension)  # Or IndexIVFFlat for >100K vectors
-
-# Add embeddings
-def add_to_rag_kb(texts: List[str], metadata: List[dict]):
-    embeddings = embedding_model.encode(texts, convert_to_numpy=True)
-    index.add(embeddings)
-    # Store metadata separately (JSON or DB)
-
-# Retrieve
-def retrieve_context(query: str, k: int = 5) -> List[dict]:
-    query_embedding = embedding_model.encode([query], convert_to_numpy=True)
-    distances, indices = index.search(query_embedding, k)
-    # Filter by RAG_SIMILARITY_THRESHOLD (0.6 cosine = ~0.8 L2 normalized)
-    return [metadata[i] for i, d in zip(indices[0], distances[0]) if d < threshold]
-```
-
-**Storage**: ~100 bytes per vector (384 dims \* float32 / 4 + overhead), 10K vectors = ~1MB, easily scales to 100K+ emails.
+**Recommended Stack**: Start with self-hosted Supabase (PostgreSQL + pgvector) for learning, migrate to Qdrant if vector search performance becomes bottleneck.
 
 ---
 
-## 4. Frontend Framework for Metrics Dashboard
+## 5. Frontend Framework for Metrics Dashboard
 
 ### Decision: **React + Recharts**
 
@@ -217,7 +338,7 @@ function TimeSeriesChart({ metric, period }) {
 
 ---
 
-## 5. Task Scheduling for Email Polling
+## 6. Task Scheduling for Email Polling
 
 ### Decision: **APScheduler (Advanced Python Scheduler)**
 
@@ -273,7 +394,7 @@ scheduler.start()
 
 ---
 
-## 6. Email Access Library
+## 7. Email Access Library
 
 ### Decision: **imap-tools**
 
@@ -324,19 +445,114 @@ def fetch_new_emails(since: datetime) -> List[Email]:
 
 ---
 
-## 7. Additional Technology Decisions
+## 8. Additional Technology Decisions
 
-### 7.1 Database: **SQLite (dev) / PostgreSQL (optional prod)**
+### 8.1 Database: **PostgreSQL with Self-Hosted Supabase Option**
 
-**Decision**: Start with SQLite, provide PostgreSQL migration path.
+**Decision**: Use PostgreSQL from the start, with self-hosted Supabase as the deployment option.
 
 **Rationale**:
 
-- SQLite: Zero-config, single-file, sufficient for single-user (<200 emails/day)
-- PostgreSQL: Available for scale (e.g., archiving years of history)
-- Alembic migrations work with both (SQLAlchemy abstraction)
+- **Learning goal**: Hands-on experience with production-grade RDBMS (resume-worthy)
+- **Self-hosting practice**: Supabase provides complete self-hosting (PostgreSQL + pgvector + auth + realtime)
+- **Future-proof**: No migration needed when scaling (JSON columns, full-text search, pgvector for vectors)
+- **Docker-friendly**: Official Supabase Docker Compose setup
+- **Advanced features**: Partial indexes, JSONB queries, concurrent transactions, better for metrics aggregation
+- **Alembic support**: Same migration workflow
 
-### 7.2 ORM: **SQLAlchemy 2.0**
+**Self-Hosted Supabase Setup**:
+Supabase is open-source and fully self-hostable, providing PostgreSQL with built-in extensions.
+
+**Docker Compose for Self-Hosted Supabase**:
+
+```yaml
+services:
+  supabase-db:
+    image: supabase/postgres:15.1.0.147
+    environment:
+      POSTGRES_PASSWORD: your_password
+    volumes:
+      - supabase_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  supabase-studio:
+    image: supabase/studio:latest
+    environment:
+      SUPABASE_DB_URL: postgresql://postgres:your_password@supabase-db:5432/postgres
+    ports:
+      - "8000:3000"
+    depends_on:
+      - supabase-db
+
+volumes:
+  supabase_data:
+```
+
+**Connection**:
+
+```python
+# SQLAlchemy async engine for Supabase PostgreSQL
+engine = create_async_engine(
+    "postgresql+asyncpg://postgres:password@localhost/postgres",
+    echo=False,
+    pool_size=5,
+    max_overflow=10
+)
+
+# Enable pgvector for vector search
+# CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+### 8.2 Convex Self-Hosting (Alternative Option)
+
+Convex is primarily cloud-based but supports self-hosting via their edge deployment platform.
+
+**Self-Hosting Approach**:
+
+- Run Convex backend on your infrastructure (Docker/Kubernetes)
+- Use Convex CLI for local development
+- Vector search via Convex's built-in vector indexing
+- Real-time subscriptions for dashboard updates
+
+**Integration Notes (Convex)**:
+
+```python
+from convex import ConvexClient
+import asyncio
+
+client = ConvexClient("http://localhost:3010")  # Self-hosted Convex
+
+# Store embedding
+await client.call("storeEmbedding", {
+    "emailId": email_id,
+    "embedding": embedding.tolist(),
+    "metadata": metadata
+})
+
+# Search
+results = await client.call("searchEmbeddings", {
+    "queryEmbedding": query_embedding.tolist(),
+    "k": 5,
+    "threshold": 0.6
+})
+```
+
+**Pros of Convex Self-Hosting**:
+
+- **Real-time**: Built-in subscriptions for dashboard updates
+- **Serverless-like**: Edge functions, automatic scaling
+- **Integrated**: Database + auth + realtime in one platform
+
+**Cons**:
+
+- **Proprietary**: Less open-source than Supabase
+- **Learning curve**: Edge deployment concepts
+- **Maturity**: Self-hosting less documented than Supabase
+
+**Recommendation**: Use self-hosted Supabase for PostgreSQL + pgvector (simpler, more open-source). Convex as alternative if real-time features become priority.
+
+### 8.3 ORM: **SQLAlchemy 2.0**
 
 **Decision**: Use SQLAlchemy Core + ORM for type-safe queries.
 
@@ -346,8 +562,9 @@ def fetch_new_emails(since: datetime) -> List[Email]:
 - Alembic integration for schema migrations
 - Type hints with declarative models
 - Both raw SQL (performance) and ORM (convenience) available
+- Works seamlessly with Supabase/PostgreSQL
 
-### 7.3 Schema Validation: **Pydantic v2**
+### 8.4 Schema Validation: **Pydantic v2**
 
 **Decision**: Pydantic for all JSON validation (LLM output, API requests/responses).
 
@@ -358,29 +575,79 @@ def fetch_new_emails(since: datetime) -> List[Email]:
 - FastAPI native integration
 - JSON Schema export for contract tests
 
-### 7.4 Testing: **pytest + pytest-asyncio + pytest-cov**
+### 8.5 Metrics & Visualization: **Prometheus + Grafana**
 
-**Decision**: Standard pytest stack with async support.
-
-**Rationale**:
-
-- Fixtures for DB setup, sample emails, mock LLM
-- Async test support via pytest-asyncio
-- Coverage reporting via pytest-cov (target: >80% coverage)
-- Contract tests via JSON schema validation in pytest
-
-### 7.5 Metrics: **Prometheus via prometheus-client**
-
-**Decision**: Prometheus exposition format for metrics.
+**Decision**: Custom dashboard for basic metrics, Grafana for complex visualizations.
 
 **Rationale**:
 
-- Industry standard, Grafana integration available
-- Low overhead (<1% CPU)
-- `prometheus-client` official Python library
-- FastAPI middleware for automatic request metrics
+- **Two-tier approach**:
+  - Custom React dashboard: Real-time operational view (5s refresh, current status, recent activity)
+  - Grafana: Historical analysis, complex queries, alerting, professional dashboards
+- **Prometheus as backbone**: Industry-standard metrics collection, PromQL for queries
+- **Grafana benefits**: Pre-built dashboards, alerting rules, threshold visualization, mobile app
+- **Learning opportunity**: Industry-standard monitoring stack (resume-worthy)
+- **Docker-compose integration**: All services in one stack with Supabase/Qdrant
 
-### 7.6 Logging: **structlog**
+**Architecture**:
+
+```
+FastAPI backend → prometheus-client → /metrics endpoint
+                                           ↓
+                                      Prometheus (scrapes)
+                                           ↓
+Custom Dashboard ←──────────────┬──→ Grafana
+(real-time ops)                  │     (historical analysis)
+                           PostgreSQL/Supabase
+                          (time-series metrics)
+```
+
+**Grafana setup**:
+
+```yaml
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+```
+
+**Prometheus config** (prometheus.yml):
+
+```yaml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "email-classifier"
+    static_configs:
+      - targets: ["backend:8000"]
+    metrics_path: "/metrics"
+```
+
+**Benefits**:
+
+- Custom dashboard: Quick health check, operator-friendly
+- Grafana: Deep analysis, trends, alerting (e.g., "Queue depth >100 for 5min")
+- Resume: "Implemented full observability stack with Prometheus + Grafana"
+
+### 8.6 Logging: **structlog**
 
 **Decision**: Structured JSON logging via structlog.
 
@@ -391,7 +658,7 @@ def fetch_new_emails(since: datetime) -> List[Email]:
 - Production-ready (Datadog, ELK stack compatible)
 - Context binding (request_id, message_id propagation)
 
-### 7.7 Configuration: **python-dotenv + Pydantic Settings**
+### 8.7 Configuration: **python-dotenv + Pydantic Settings**
 
 **Decision**: `.env` files loaded via `python-dotenv`, validated via Pydantic `BaseSettings`.
 
@@ -401,7 +668,7 @@ def fetch_new_emails(since: datetime) -> List[Email]:
 - Type-safe config with validation
 - Clear error messages for missing/invalid config
 
-### 7.8 Encryption: **cryptography library**
+### 8.8 Encryption: **cryptography library**
 
 **Decision**: `cryptography.fernet` for AES-256 symmetric encryption.
 
@@ -413,45 +680,48 @@ def fetch_new_emails(since: datetime) -> List[Email]:
 
 ---
 
-## 8. Performance Validation Strategy
+## 9. Performance Validation Strategy
 
 ### Benchmarks to Run (Phase 5):
 
-1. **LLM inference latency**: Measure Qwen 3 8B with various context lengths (1K, 2K, 4K chars)
-2. **RAG retrieval**: Benchmark FAISS search with 10K, 50K, 100K vectors
+1. **LLM inference latency**: Measure Qwen 3 8B with GPU acceleration at various context lengths (1K, 2K, 4K chars)
+2. **RAG retrieval**: Benchmark Qdrant/Supabase pgvector search with 10K, 50K, 100K vectors
 3. **End-to-end classification**: Poll → RAG → LLM → validate → persist (p50, p95, p99)
 4. **Dashboard API**: Load test `/metrics/current` endpoint (1K req/s target)
-5. **Memory footprint**: Measure RSS with LLM loaded + 10K RAG vectors
+5. **Memory footprint**: Measure RSS with Ollama + Qdrant/Supabase + 10K RAG vectors
 
 ### Expected Results:
 
-- Qwen 3 8B (Q4_K_M): ~4-6s per email (well within <12s p95)
-- FAISS retrieval: ~10-30ms for 10K vectors (<50ms target met)
-- End-to-end: <5s median, <10s p95 (exceeds <12s requirement)
+- Qwen 3 8B (GPU): ~0.5-2s per email (exceeds <12s p95 target significantly)
+- Qdrant/Supabase retrieval: ~10-30ms for 10K vectors (<50ms target met)
+- End-to-end: <3s median, <5s p95 (exceeds <12s requirement)
 - Dashboard: <50ms p95 (exceeds <500ms requirement)
-- Memory: ~900MB LLM + 100MB FAISS + 50MB Python = ~1.05GB (within <1.2GB)
+- Memory: ~200MB Ollama client + ~50MB Qdrant/Supabase client + ~50MB Python = ~300MB (well within <1.2GB)
 
 ---
 
-## 9. Resume-Worthy Tech Stack Summary
+## 10. Updated Tech Stack Summary
 
 **For Resume/Portfolio Documentation**:
 
 ```
 Email Classifier System
 ├── Backend: Python 3.11, FastAPI, SQLAlchemy, Pydantic v2
-├── LLM: Qwen 3 8B (llama-cpp-python, local inference)
-├── RAG: FAISS + sentence-transformers (semantic search)
-├── Frontend: React 18, Recharts, Axios
-├── Database: SQLite/PostgreSQL with Alembic migrations
-├── Monitoring: Prometheus metrics, structlog JSON logging
+├── LLM: Qwen 3 8B via Ollama (GPU-accelerated)
+├── Vector DB: Qdrant or Self-Hosted Supabase pgvector (Docker)
+├── Embeddings: EmbeddingGemma / qwen3:0.6b via Ollama
+├── Database: PostgreSQL via Self-Hosted Supabase
+├── Monitoring: Prometheus + Grafana (industry-standard observability)
+├── Custom Dashboard: React 18, Recharts (real-time operations)
 ├── Testing: pytest (80%+ coverage), contract tests, integration tests
-├── Deployment: Docker + docker-compose, single-machine
+├── Deployment: Docker Compose (Ollama + Supabase + Qdrant + Grafana)
 └── Key Features:
-    ✓ <5s median email classification latency
-    ✓ Real-time metrics dashboard with time-series visualization
-    ✓ Privacy-preserving local LLM (no external APIs)
-    ✓ RAG-enhanced context retrieval for improved accuracy
+    ✓ GPU-accelerated LLM inference (~0.5-2s per email)
+    ✓ Self-hosted Supabase with pgvector for vector search
+    ✓ Dedicated vector database option (Qdrant)
+    ✓ Production PostgreSQL self-hosting experience
+    ✓ Dual monitoring: Custom ops dashboard + Grafana analytics
+    ✓ Full Docker deployment with GPU passthrough
     ✓ 45+ hierarchical email categories
     ✓ Feedback loop for continuous improvement
 ```
@@ -459,8 +729,12 @@ Email Classifier System
 **Skills Demonstrated**:
 
 - Full-stack development (Python backend + React frontend)
-- LLM integration and prompt engineering
-- Vector search and embeddings (RAG)
+- LLM integration with GPU acceleration (Ollama)
+- Self-hosted backend services (Supabase, Qdrant)
+- Vector database management (pgvector, Qdrant)
+- PostgreSQL database design and self-hosting
+- Monitoring & observability (Prometheus + Grafana)
+- Docker containerization with GPU support
 - RESTful API design with OpenAPI
 - Real-time data visualization
 - Test-driven development (TDD)
@@ -469,7 +743,7 @@ Email Classifier System
 
 ---
 
-## 10. Dependencies List
+## 11. Dependencies List
 
 ### Backend (requirements.txt)
 
@@ -481,15 +755,18 @@ pydantic==2.5.0
 pydantic-settings==2.1.0
 
 # LLM & RAG
-llama-cpp-python==0.2.20
-sentence-transformers==2.2.2
-faiss-cpu==1.7.4
+ollama==0.1.6  # Ollama Python client
+qdrant-client==1.7.0  # Vector database option
+
+# Embedding Models (accessed via Ollama, no separate packages)
+# - embeddinggemma (primary)
+# - qwen3:0.6b (alternative for testing)
 
 # Database
 sqlalchemy[asyncio]==2.0.23
 alembic==1.13.0
-aiosqlite==0.19.0  # Async SQLite
-asyncpg==0.29.0  # Optional: PostgreSQL
+asyncpg==0.29.0  # PostgreSQL async driver
+psycopg2-binary==2.9.9  # PostgreSQL sync driver (for Alembic)
 
 # Email
 imap-tools==1.5.0
@@ -508,6 +785,7 @@ cryptography==41.0.7
 # Utilities
 python-dotenv==1.0.0
 tenacity==8.2.3  # Retry with exponential backoff
+httpx==0.25.2  # For Ollama API calls
 ```
 
 ### Frontend (package.json)
@@ -547,12 +825,21 @@ mypy==1.7.1
 
 ## Research Complete ✅
 
-All technical unknowns resolved. Ready to proceed to Phase 1: Design & Contracts.
+All technical unknowns resolved with user-specified preferences integrated. Ready to proceed to Phase 1: Design & Contracts.
+
+**Final Architecture**:
+
+- **LLM**: Ollama (qwen3:8b) - GPU-accelerated, Docker-friendly
+- **Vector DB**: Qdrant or Self-Hosted Supabase pgvector - Self-hosting focus
+- **Database**: PostgreSQL via Self-Hosted Supabase - Production-grade self-hosting
+- **Embeddings**: EmbeddingGemma (primary) / qwen3:0.6b (alternative)
+- **Monitoring**: Custom React dashboard + Grafana for complex analysis
+- **Deployment**: Full Docker Compose stack with GPU passthrough and self-hosted services
 
 **Next Steps**:
 
-1. Generate `data-model.md` from spec entities
+1. Generate `data-model.md` from spec entities (with PostgreSQL/Supabase schema)
 2. Create JSON Schema v2 and OpenAPI contracts
 3. Write failing contract tests
-4. Document quickstart validation steps
+4. Document quickstart validation steps (including Docker Compose setup for Supabase)
 5. Update `.roo/CLAUDE.md` agent context file
