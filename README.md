@@ -110,6 +110,11 @@ npm install
 npm start
 ```
 
+## Development Workflow
+
+- One branch per task (task ID name).
+- Open PR for review; no direct pushes to main.
+
 ## 🧪 Testing
 
 ```bash
