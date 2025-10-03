@@ -63,6 +63,8 @@ As an individual email user (student) who receives a variety of academic, person
 
 As a system operator (self), I want a web-based metrics dashboard displaying real-time classification performance so that I can monitor system health, identify bottlenecks, evaluate tagging quality, and demonstrate project capabilities for resume purposes.
 
+As an email user, I want the classification results (tags) to appear as Gmail labels in my inbox so that I can use Gmail's built-in labeling, filtering, and search features without additional tools or manual intervention.
+
 ### Acceptance Scenarios
 
 1. **Given** new unread emails have arrived since the last scan, **When** the system performs its periodic classification cycle, **Then** each newly detected email is evaluated and assigned one or more tags according to the defined taxonomy (or marked unclassified if no rule/confidence threshold satisfied).
@@ -75,6 +77,9 @@ As a system operator (self), I want a web-based metrics dashboard displaying rea
 8. **Given** the system is running, **When** the user accesses the web dashboard, **Then** real-time metrics are displayed including: average processing time per email (current hour/day), average tags per email, classification confidence distribution, category breakdown, queue depth, error rates, and RAG effectiveness indicators.
 9. **Given** historical data exists, **When** viewing the metrics dashboard, **Then** time-series graphs show trends over configurable periods (last hour, 24 hours, 7 days, 30 days) for performance tracking and bottleneck identification.
 10. **Given** a performance anomaly occurs (e.g., latency spike, confidence drop), **When** monitoring the dashboard, **Then** visual indicators highlight degraded metrics with severity levels (warning/critical) and timestamp of first occurrence.
+11. **Given** an email has been classified, **When** the system applies labels to Gmail, **Then** the corresponding Gmail labels are created and applied to the email in the user's inbox, enabling native Gmail filtering and organization.
+12. **Given** a new category is assigned that doesn't have a matching Gmail label, **When** label application occurs, **Then** the system creates the Gmail label with the hierarchical name (e.g., "Academic/Exams") and applies it to the email.
+13. **Given** Gmail API rate limits are hit, **When** applying labels, **Then** the system queues failed operations for retry with exponential backoff and logs the rate limit error without blocking other classifications.
 
 ### Edge Cases
 
@@ -143,6 +148,11 @@ As a system operator (self), I want a web-based metrics dashboard displaying rea
 - **FR-043**: Dashboard MUST implement read-only authentication mechanism (simple token-based or basic auth) to prevent unauthorized access when exposed on local network; credentials configurable via DASHBOARD_USERNAME and DASHBOARD_PASSWORD environment variables.
 - **FR-044**: Dashboard MUST log all user-initiated actions (reclassify requests, manual corrections, configuration changes) to audit trail with username and timestamp for accountability.
 - **FR-045**: Dashboard MUST export metrics data: downloadable CSV or JSON format for offline analysis, covering selected time range and metric categories; useful for generating performance reports for project documentation.
+- **FR-046**: System MUST integrate with Gmail API to apply classification tags as Gmail labels, enabling native inbox organization.
+- **FR-047**: System MUST create Gmail labels matching the classification taxonomy if they don't exist, using hierarchical paths (e.g., "Academic/Exams") for subcategories.
+- **FR-048**: System MUST handle Gmail API rate limits and authentication errors with exponential backoff retry (max 5 attempts), queuing failed label applications for later processing without blocking the classification pipeline.
+- **FR-049**: System MUST support configurable label colors and nested label structure in Gmail to match the hierarchical taxonomy (primary categories as parent labels, subcategories as child labels).
+- **FR-050**: System MUST provide a mechanism to sync existing Gmail labels back to the classification system for feedback loop integration (optional, for learning from manual user corrections).
 
 ### Key Entities _(include if feature involves data)_
 
@@ -155,6 +165,8 @@ As a system operator (self), I want a web-based metrics dashboard displaying rea
 - **DashboardMetric**: Aggregated performance metric; attributes: metric_name, value, timestamp, aggregation_period (5s/1h/1d), unit.
 - **MetricTimeSeriesPoint**: Historical data point; attributes: metric_name, timestamp, value, labels (category, confidence_bucket, etc.).
 - **SystemHealthStatus**: Current system state; attributes: component_name, status (healthy/degraded/down), last_check_timestamp, error_message.
+- **GmailLabel**: Gmail label metadata; attributes: gmail_label_id, name, display_name, color_id, nested_parent_id, created_timestamp, synced_timestamp.
+- **LabelApplication**: Gmail label application log; attributes: email_id, gmail_message_id, label_id, applied_timestamp, status (success|failed|pending), retry_count.
 
 ### Non-Functional Requirements
 
