@@ -1,0 +1,48 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+  external_labels:
+    environment: local
+
+# Alerting: (Alertmanager endpoint can be added later)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#             - "alertmanager:9093"
+
+rule_files:
+  - /etc/prometheus/alerts/alerts.yml
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+    metrics_path: /metrics
+
+  - job_name: backend
+    honor_labels: true
+    metrics_path: /metrics
+    scrape_interval: 15s
+    static_configs:
+      - targets:
+          - backend:8000
+        labels:
+          service: backend
+          tier: application
+
+    # Relabel example (kept for future adaptation)
+    # relabel_configs:
+    #   - source_labels: [__address__]
+    #     target_label: instance
+
+  # Placeholder for future exporters (uncomment/add as needed)
+  # - job_name: node
+  #   static_configs:
+  #     - targets: ["node-exporter:9100"]
+# Notes:
+# 1. Ensure backend exposes a /metrics endpoint (e.g., using Prometheus FastAPI instrumentation).
+# 2. Add Alertmanager configuration when notification routing is implemented.
+# 3. Adjust retention via docker-compose (PROMETHEUS_RETENTION_DAYS).
+# 4. Add additional jobs (Celery, Redis, etc.) as infrastructure evolves.

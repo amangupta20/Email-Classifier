@@ -1,0 +1,63 @@
+groups:
+  - name: backend-alerts
+    interval: 30s
+    rules:
+      - alert: BackendDown
+        expr: up{job="backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: backend
+        annotations:
+          summary: "Backend service is down"
+          description: "Prometheus target for backend (FastAPI) has been unreachable for > 1 minute."
+
+      - alert: HighRequestLatencyP95
+        expr: |
+          histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{job="backend"}[5m])) by (le)) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          service: backend
+        annotations:
+          summary: "High p95 request latency"
+          description: "95th percentile request latency > 500ms over the last 5 minutes."
+
+      - alert: ElevatedErrorRate
+        expr: |
+          (sum(rate(http_requests_total{job="backend",status=~"5.."}[5m])) /
+           sum(rate(http_requests_total{job="backend"}[5m]))) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          service: backend
+        annotations:
+          summary: "Elevated 5xx error rate"
+          description: "More than 5% of requests returned 5xx over the last 10 minutes."
+
+  - name: infrastructure-alerts
+    interval: 60s
+    rules:
+      - alert: PrometheusTargetMissing
+        expr: |
+          (up == 0)
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "A Prometheus target has disappeared"
+          description: "Target {{ $labels.instance }} (job {{ $labels.job }}) is down for > 2 minutes."
+
+      - alert: PrometheusHighDiskUsage
+        expr: |
+          (prometheus_tsdb_storage_blocks_bytes / 1024 / 1024 / 1024) > 4
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "Prometheus TSDB size exceeds 4GB"
+          description: "Time-series database is growing; consider adjusting retention or capacity."
+# Notes:
+# - Adjust thresholds as you learn real traffic patterns.
+# - Ensure backend exports: http_request_duration_seconds_bucket, http_requests_total, etc.
+# - Add notification integrations (Alertmanager) in future iterations.
