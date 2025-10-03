@@ -46,7 +46,7 @@
 
 ## Phase 3.1: Setup
 
-- [ ] T001 Create project structure per plan.md: Create `backend/`, `frontend/`, `docker-compose.yml`, `.env.example`, `README.md`, `pyproject.toml`, `package.json` in root.
+- [x] T001 Create project structure per plan.md: Create `backend/`, `frontend/`, `docker-compose.yml`, `.env.example`, `README.md`, `pyproject.toml`, `package.json` in root.
 - [ ] T002 Initialize Python backend with dependencies: Install FastAPI, SQLAlchemy, Pydantic v2, Alembic, asyncpg, ollama, qdrant-client, imap-tools, APScheduler, prometheus-client, structlog, cryptography, tenacity, httpx from requirements.txt in `backend/`.
 - [ ] T003 Setup Docker Compose for Ollama (GPU), PostgreSQL, Qdrant, Prometheus, Grafana in `docker-compose.yml`, including environment variables and volume mounts for self-hosted Supabase option.
 - [ ] T004 [P] Configure Python linting and formatting: Setup ruff, black, pre-commit hooks in `backend/pyproject.toml` and `.pre-commit-config.yaml`.
