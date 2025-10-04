@@ -1,9 +1,16 @@
 # Feature Specification: Intelligent Inbox Email Classification
 
-**Feature Branch**: `001-i-am-building`  
-**Created**: 2025-10-02  
-**Status**: Draft  
+**Feature Branch**: `001-i-am-building`
+**Created**: 2025-10-02
+**Updated**: 2025-10-04 (Two-Version Architecture)
+**Status**: Draft
 **Input**: User description: "i am building a email classifier(3rd year college student) to make my own inbox easier to navigate as well as have a decent project on my resume. every x seconds its checking for emails and sending them to the classification queue which is handeled by a self hosted qwen 3 8b which returns a json based on which emails are tagged"
+
+**Implementation Strategy**: Two progressive versions
+
+- **V1 (n8n)**: Rapid prototype using n8n workflows for validation (3-5 days)
+- **V2 (Pure Python)**: Production implementation with full control (5-7 days)
+- **Shared**: PostgreSQL database, React dashboard, Gmail API, monitoring
 
 ## Execution Flow (main)
 
@@ -65,6 +72,10 @@ As a system operator (self), I want a web-based metrics dashboard displaying rea
 
 As an email user, I want the classification results (tags) to appear as Gmail labels in my inbox so that I can use Gmail's built-in labeling, filtering, and search features without additional tools or manual intervention.
 
+**V1 Specific**: As a developer, I want to rapidly prototype the classification workflow using n8n visual workflows so that I can validate the taxonomy and prompts quickly before investing in custom code.
+
+**V2 Specific**: As a developer, I want full programmatic control over the classification pipeline with comprehensive testing so that I can optimize performance and maintain the system long-term.
+
 ### Acceptance Scenarios
 
 1. **Given** new unread emails have arrived since the last scan, **When** the system performs its periodic classification cycle, **Then** each newly detected email is evaluated and assigned one or more tags according to the defined taxonomy (or marked unclassified if no rule/confidence threshold satisfied).
@@ -100,9 +111,15 @@ As an email user, I want the classification results (tags) to appear as Gmail la
 
 ### Functional Requirements
 
-- **FR-001**: System MUST periodically scan for new emails at a configurable interval (EMAIL_POLL_INTERVAL, default 30 seconds).
-- **FR-002**: System MUST detect and enqueue only emails not yet classified using idempotency key derived from hash(message_id + schema_version).
-- **FR-003**: System MUST assign at least one primary category from the hierarchical taxonomy; emails below confidence threshold flagged for review rather than force-categorized as "Unclassified".
+**Version Annotations**:
+
+- 🔵 **V1** = n8n workflow implementation
+- 🟢 **V2** = Pure Python implementation
+- 🟣 **Shared** = Common to both versions (database, UI, monitoring)
+
+- **FR-001** 🔵🟢: System MUST periodically scan for new emails at a configurable interval (EMAIL_POLL_INTERVAL, default 30 seconds). _V1: n8n IMAP Trigger node; V2: Python imap-tools with APScheduler_
+- **FR-002** 🟣: System MUST detect and enqueue only emails not yet classified using idempotency key derived from hash(message_id + schema_version). _Same logic in both versions_
+- **FR-003** 🟣: System MUST assign at least one primary category from the hierarchical taxonomy; emails below confidence threshold flagged for review rather than force-categorized as "Unclassified". _Same classification logic_
 - **FR-004**: System MUST support the comprehensive hierarchical tag taxonomy defined in constitution v2 including Academic (6 subtags), Career (5 subtags), Administrative (5 subtags), Extracurricular (5 subtags), Time-Sensitive (5 subtags), Financial (4 subtags), Personal (3 subtags), Learning (4 subtags), Promotions (3 subtags), System (3 subtags), and Spam (3 subtags).
 - **FR-005**: System MUST support taxonomy expansion through schema versioning (semantic versioning: MAJOR for breaking changes, MINOR for additive changes) with backward-compatible migration paths.
 - **FR-006**: System MUST persist classification results including message_id, primary_category, secondary_categories (up to 3), priority, deadline_utc, confidence (0.0-1.0, two decimal precision), rationale (max 200 chars), detected_entities, sentiment, action_items, thread_context, rag_context_used, and schema_version.
@@ -130,7 +147,7 @@ As an email user, I want the classification results (tags) to appear as Gmail la
 - **FR-028**: System MUST redact sensitive fields in logs: full email bodies excluded from INFO/WARN/ERROR logs (DEBUG only in dev), PII patterns (email addresses, phone numbers) masked in production logs using configurable regex filters, raw credentials never logged.
 - **FR-029**: System MUST track unclassified rate metric: count of emails with confidence <threshold / total processed, aggregated hourly/daily for trend analysis and RAG effectiveness monitoring.
 - **FR-030**: System MUST provide manual correction mechanism: user specifies message_id + corrected_category, system updates classification in metadata DB, logs correction to feedback store, triggers incremental RAG knowledge base update, optionally re-processes similar pending emails.
-- **FR-031**: System MUST implement Retrieval-Augmented classification in first version: retrieve top K=5 relevant context chunks from RAG knowledge base containing historical classifications, domain context (course codes, company names, professor names), temporal patterns (semester schedules), and user preferences; inject into LLM prompt; track rag_context_used in output; maintain vector index (FAISS/Hnswlib) with sentence-transformer embeddings (all-MiniLM-L6-v2); weekly batch re-indexing via RAG_REINDEX_CRON; incremental updates on new classifications; opt-in via RAG_ENABLED flag (default true).
+- **FR-031** 🔵🟢: System MUST implement Retrieval-Augmented classification in first version: retrieve top K=5 relevant context chunks from RAG knowledge base containing historical classifications, domain context (course codes, company names, professor names), temporal patterns (semester schedules), and user preferences; inject into LLM prompt; track rag_context_used in output; maintain vector index; weekly batch re-indexing via RAG_REINDEX_CRON; incremental updates on new classifications; opt-in via RAG_ENABLED flag (default true). _V1: Qdrant vector store (n8n integration); V2: FAISS/Hnswlib (embedded Python libraries)_
 
 ### User Interface Requirements
 
@@ -148,25 +165,27 @@ As an email user, I want the classification results (tags) to appear as Gmail la
 - **FR-043**: Dashboard MUST implement read-only authentication mechanism (simple token-based or basic auth) to prevent unauthorized access when exposed on local network; credentials configurable via DASHBOARD_USERNAME and DASHBOARD_PASSWORD environment variables.
 - **FR-044**: Dashboard MUST log all user-initiated actions (reclassify requests, manual corrections, configuration changes) to audit trail with username and timestamp for accountability.
 - **FR-045**: Dashboard MUST export metrics data: downloadable CSV or JSON format for offline analysis, covering selected time range and metric categories; useful for generating performance reports for project documentation.
-- **FR-046**: System MUST integrate with Gmail API to apply classification tags as Gmail labels, enabling native inbox organization.
-- **FR-047**: System MUST create Gmail labels matching the classification taxonomy if they don't exist, using hierarchical paths (e.g., "Academic/Exams") for subcategories.
-- **FR-048**: System MUST handle Gmail API rate limits and authentication errors with exponential backoff retry (max 5 attempts), queuing failed label applications for later processing without blocking the classification pipeline.
+- **FR-046** 🟣: System MUST integrate with Gmail API to apply classification tags as Gmail labels, enabling native inbox organization. _Shared Python Gmail service for both V1 and V2_
+- **FR-047** 🟣: System MUST create Gmail labels matching the classification taxonomy if they don't exist, using hierarchical paths (e.g., "Academic/Exams") for subcategories. _Same Gmail service_
+- **FR-048** 🟣: System MUST handle Gmail API rate limits and authentication errors with exponential backoff retry (max 5 attempts), queuing failed label applications for later processing without blocking the classification pipeline. _Same retry logic_
 - **FR-049**: System MUST support configurable label colors and nested label structure in Gmail to match the hierarchical taxonomy (primary categories as parent labels, subcategories as child labels).
 - **FR-050**: System MUST provide a mechanism to sync existing Gmail labels back to the classification system for feedback loop integration (optional, for learning from manual user corrections).
 
 ### Key Entities _(include if feature involves data)_
 
-- **Email**: Represents a single inbound message; attributes: unique identifier, received timestamp, sender metadata (non-sensitive), subject, (body reference or hash), classification status.
-- **ClassificationResult**: Represents outcome of classification; attributes: email ID (ref), list of tags, confidence scores per tag, processed timestamp, status (success|error|skipped), version of taxonomy.
-- **Tag**: Represents a category label; attributes: name, description, active flag, optional priority/order.
-- **ClassificationCycle**: Represents one periodic run; attributes: cycle ID, start/end timestamps, counts (scanned, classified, failed, unclassified), duration.
-- **OverrideAction** (future/conditional): Manual user correction; attributes: email ID, previous tags, new tags, reason, timestamp.
-- **SystemConfig**: Configuration store; attributes: polling interval, confidence threshold(s), enabled tags, retry policy, maximum parallelism.
-- **DashboardMetric**: Aggregated performance metric; attributes: metric_name, value, timestamp, aggregation_period (5s/1h/1d), unit.
-- **MetricTimeSeriesPoint**: Historical data point; attributes: metric_name, timestamp, value, labels (category, confidence_bucket, etc.).
-- **SystemHealthStatus**: Current system state; attributes: component_name, status (healthy/degraded/down), last_check_timestamp, error_message.
-- **GmailLabel**: Gmail label metadata; attributes: gmail_label_id, name, display_name, color_id, nested_parent_id, created_timestamp, synced_timestamp.
-- **LabelApplication**: Gmail label application log; attributes: email_id, gmail_message_id, label_id, applied_timestamp, status (success|failed|pending), retry_count.
+**Note**: All entities use identical database schema for both V1 and V2, enabling seamless migration.
+
+- **Email** 🟣: Represents a single inbound message; attributes: unique identifier, received timestamp, sender metadata (non-sensitive), subject, (body reference or hash), classification status. _Same schema for V1 and V2_
+- **ClassificationResult** 🟣: Represents outcome of classification; attributes: email ID (ref), list of tags, confidence scores per tag, processed timestamp, status (success|error|skipped), version of taxonomy. _Same schema_
+- **Tag** 🟣: Represents a category label; attributes: name, description, active flag, optional priority/order. _Same schema_
+- **ClassificationCycle** 🟣: Represents one periodic run; attributes: cycle ID, start/end timestamps, counts (scanned, classified, failed, unclassified), duration. _Same schema_
+- **OverrideAction** 🟣 (future/conditional): Manual user correction; attributes: email ID, previous tags, new tags, reason, timestamp. _Same schema_
+- **SystemConfig** 🟣: Configuration store; attributes: polling interval, confidence threshold(s), enabled tags, retry policy, maximum parallelism. _Same schema_
+- **DashboardMetric** 🟣: Aggregated performance metric; attributes: metric_name, value, timestamp, aggregation_period (5s/1h/1d), unit. _Same schema_
+- **MetricTimeSeriesPoint** 🟣: Historical data point; attributes: metric_name, timestamp, value, labels (category, confidence_bucket, etc.). _Same schema_
+- **SystemHealthStatus** 🟣: Current system state; attributes: component_name, status (healthy/degraded/down), last_check_timestamp, error_message. _Same schema_
+- **GmailLabel** 🟣: Gmail label metadata; attributes: gmail_label_id, name, display_name, color_id, nested_parent_id, created_timestamp, synced_timestamp. _Same schema_
+- **LabelApplication** 🟣: Gmail label application log; attributes: email_id, gmail_message_id, label_id, applied_timestamp, status (success|failed|pending), retry_count. _Same schema_
 
 ### Non-Functional Requirements
 
@@ -177,6 +196,81 @@ As an email user, I want the classification results (tags) to appear as Gmail la
 - **NFR-005**: Dashboard MUST remain functional when backend is temporarily unavailable (show cached data with staleness indicator, graceful degradation).
 
 ---
+
+## Implementation Versions
+
+### Version 1: n8n Workflow Prototype
+
+**Purpose**: Rapid validation of taxonomy and classification logic
+
+**Architecture**:
+
+- n8n workflows handle: Email polling (IMAP Trigger) → RAG retrieval (Vector Store nodes) → LLM classification (HTTP Request to Ollama) → Database persistence (PostgreSQL nodes)
+- Python handles: Dashboard API, Gmail labeling, metrics collection
+- Shared: PostgreSQL database schema, React dashboard UI, monitoring stack
+
+**Key Benefits**:
+
+- Fast development (3-5 days to working prototype)
+- Visual workflow debugging
+- Low-code iteration on prompts and taxonomy
+- Immediate feedback on classification quality
+
+**Limitations**:
+
+- Limited unit testing capabilities
+- n8n processing overhead (~100ms per workflow)
+- Harder to optimize performance
+- GUI-based configuration
+
+**Success Criteria**:
+
+- Classification working end-to-end
+- Taxonomy validated with real emails
+- Dashboard displaying metrics
+- <12s p95 latency achieved
+
+### Version 2: Pure Python Production
+
+**Purpose**: Production-grade system with full control and testability
+
+**Architecture**:
+
+- Python services handle: Email polling (imap-tools) → RAG retrieval (FAISS/Hnswlib) → LLM classification (ollama-python) → Database persistence (SQLAlchemy async)
+- Orchestration: APScheduler for scheduling, custom queue manager
+- Shared: Same PostgreSQL schema, same React UI, same monitoring
+
+**Key Benefits**:
+
+- Full unit and integration test coverage
+- Performance optimization (<5s median)
+- Complete control over error handling
+- Pure Python codebase for maintainability
+- Better resume demonstration of skills
+
+**Success Criteria**:
+
+- All V1 functionality replicated
+- Performance improved vs V1
+- > 80% test coverage
+- Seamless migration (same database, same UI)
+
+### Migration Path
+
+1. **V1 Development** (Days 1-5): Build and validate with n8n
+2. **V1 Production** (Days 6-10): Run V1, collect metrics, refine taxonomy
+3. **V2 Development** (Days 11-17): Build Python workers in parallel
+4. **A/B Testing** (Day 18): Run both versions, compare performance
+5. **V2 Switchover** (Day 19): Deploy V2, keep V1 as fallback
+6. **V1 Decommission** (Day 26): Remove n8n after 1 week validation
+
+### Shared Components (No Version Differences)
+
+- **PostgreSQL Database**: Identical schema for both versions
+- **React Dashboard**: Same UI, connects to FastAPI endpoints
+- **Gmail Integration**: Same Python service for label application
+- **Monitoring**: Same Prometheus metrics, same Grafana dashboards
+- **Docker Compose**: Services differ, configurations shared
 
 ## Future Enhancements (Deferred / Optional)
 

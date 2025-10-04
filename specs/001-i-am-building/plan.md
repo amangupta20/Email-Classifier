@@ -33,24 +33,55 @@
 
 ## Summary
 
-Build a local-first email classification system using Python with self-hosted Qwen 3 8B LLM, RAG-enhanced context retrieval, and a web dashboard for monitoring. The system polls email inbox every 30 seconds, classifies emails into 45+ hierarchical categories using LLM with retrieved context from vector embeddings, persists results in SQLite/PostgreSQL, and exposes real-time metrics via a web interface. Target: <5s median classification latency, <12s p95, with privacy-preserving local processing only.
+Build a local-first email classification system in **two progressive versions**:
+
+**Version 1 (V1) - n8n Workflow**: Rapid prototyping using n8n for email polling, RAG retrieval, and LLM classification workflow. Shared components: PostgreSQL database, React dashboard, Gmail API integration, and Grafana monitoring. This version proves the concept and validates the taxonomy with minimal custom code.
+
+**Version 2 (V2) - Pure Python**: Production-grade implementation replacing n8n workflow with custom Python services while retaining all shared infrastructure. Provides full control, testability, and performance optimization. Migration from V1 is seamless as both versions use identical database schema and APIs.
+
+**Common Target**: <5s median classification latency, <12s p95, 45+ hierarchical categories, privacy-preserving local processing with self-hosted Qwen 3 8B LLM.
 
 ## Technical Context
 
-**Language/Version**: Python 3.11+ (type hints, async/await, dataclasses)
+**Implementation Strategy**: Two-version progressive approach (V1 → V2)
+
+**Language/Version**: Python 3.11+ (type hints, async/await, dataclasses) + n8n (V1 workflow automation)
 
 **Primary Dependencies**:
+
+**Version 1 (n8n-based)**:
+
+- **Workflow Engine**: n8n (self-hosted, Docker)
+- **n8n Nodes**: IMAP Email, HTTP Request (Ollama), Qdrant Vector Store, PostgreSQL, Gmail
+- **LLM Inference**: Ollama (Qwen 3 8B) via HTTP Request nodes
+- **Vector Store**: Qdrant (accessed via n8n Vector Store nodes)
+- **Database**: PostgreSQL (shared with V2)
+- **Web Framework**: FastAPI (for dashboard API only)
+- **Email Access**: n8n IMAP Trigger node
+- **Validation**: n8n JSON Schema validation + Pydantic (dashboard)
+- **Testing**: n8n workflow testing + Python API tests
+- **Monitoring**: prometheus-client for metrics export
+
+**Version 2 (Pure Python)**:
 
 - **LLM Inference**: Options evaluated in research phase
 - **Vector Store**: FAISS or Hnswlib for RAG embeddings
 - **Embeddings**: sentence-transformers (all-MiniLM-L6-v2)
-- **Database**: SQLite (development) / PostgreSQL (production)
-- **Web Framework**: Options evaluated in research phase
+- **Database**: PostgreSQL (same schema as V1)
+- **Web Framework**: FastAPI (dashboard + worker API)
 - **Task Scheduling**: APScheduler or asyncio-based scheduler
 - **Email Access**: imaplib (stdlib) or imap-tools
 - **Validation**: Pydantic v2 for schema validation
 - **Testing**: pytest, pytest-asyncio, pytest-cov
-- **Monitoring**: prometheus-client for metrics export
+- **Monitoring**: prometheus-client for metrics export (same as V1)
+
+**Shared Components (Both Versions)**:
+
+- PostgreSQL database (identical schema)
+- React dashboard (connects to FastAPI backend)
+- Gmail API integration (Python service)
+- Grafana + Prometheus monitoring
+- Docker Compose orchestration
 
 **Storage**:
 
@@ -72,7 +103,10 @@ Build a local-first email classification system using Python with self-hosted Qw
 - Docker containerization for easier deployment
 - Single-machine deployment (no distributed systems)
 
-**Project Type**: Web application (backend worker + frontend dashboard)
+**Project Type**:
+
+- **V1**: n8n workflow + Python API backend + React dashboard
+- **V2**: Pure Python worker + API backend + React dashboard (same UI)
 
 **Performance Goals**:
 
@@ -98,6 +132,20 @@ Build a local-first email classification system using Python with self-hosted Qw
 - Historical data: 10K+ emails for RAG context
 - Dashboard handles 10K data points per graph
 - 45+ hierarchical categories with up to 4 tags per email
+
+**Version Comparison**:
+
+| Aspect                | V1 (n8n)                   | V2 (Pure Python)             |
+| --------------------- | -------------------------- | ---------------------------- |
+| **Workflow Logic**    | n8n visual workflows       | Python services              |
+| **Development Speed** | Fast (low-code)            | Slower (custom code)         |
+| **Testability**       | Limited (workflow tests)   | Full (unit + integration)    |
+| **Performance**       | Good (n8n overhead ~100ms) | Excellent (optimized)        |
+| **Maintainability**   | n8n GUI + some Python      | Pure Python codebase         |
+| **Database**          | PostgreSQL (shared schema) | PostgreSQL (same schema)     |
+| **Dashboard**         | React (shared)             | React (same UI)              |
+| **Migration Effort**  | N/A                        | Low (swap workflow only)     |
+| **Resume Value**      | n8n + Python skills        | Advanced Python architecture |
 
 ## Constitution Check
 
@@ -163,7 +211,25 @@ specs/001-i-am-building/
 ### Source Code (repository root)
 
 ```
-# Option 2: Web application (backend worker + frontend dashboard)
+# Two-version architecture: V1 (n8n) and V2 (Pure Python)
+
+# ============ VERSION 1: n8n Workflow ============
+n8n/
+├── workflows/
+│   ├── email_classification_main.json     # Main workflow: IMAP → RAG → LLM → DB → Gmail
+│   ├── rag_indexer.json                   # Background RAG re-indexing workflow
+│   └── feedback_processor.json            # User correction → RAG update workflow
+├── credentials/
+│   ├── imap_credentials.json              # Email account (encrypted)
+│   ├── postgres_credentials.json          # Database connection
+│   ├── qdrant_credentials.json            # Vector store
+│   ├── ollama_credentials.json            # LLM endpoint
+│   └── gmail_oauth.json                   # Gmail API credentials
+├── config/
+│   └── environment.json                   # n8n environment variables
+└── README.md                              # n8n setup instructions
+
+# ============ VERSION 2: Pure Python Worker ============
 backend/
 ├── src/
 │   ├── __init__.py
@@ -176,38 +242,39 @@ backend/
 │   │   └── schema_v2.py             # Pydantic models for JSON schema v2
 │   ├── services/
 │   │   ├── __init__.py
-│   │   ├── email_poller.py          # IMAP polling, idempotency checks
-│   │   ├── queue_manager.py         # Message queue with exactly-once semantics
-│   │   ├── llm_classifier.py        # Qwen 3 integration, prompt construction
-│   │   ├── rag_retriever.py         # FAISS/Hnswlib vector search, embeddings
-│   │   ├── schema_validator.py      # JSON schema validation, parsing
-│   │   ├── metrics_collector.py     # Prometheus metrics, structured logging
-│   │   └── feedback_processor.py    # User corrections, RAG KB updates
+│   │   ├── email_poller.py          # IMAP polling, idempotency checks (V2 only)
+│   │   ├── queue_manager.py         # Message queue with exactly-once semantics (V2 only)
+│   │   ├── llm_classifier.py        # Qwen 3 integration, prompt construction (V2 only)
+│   │   ├── rag_retriever.py         # FAISS/Hnswlib vector search, embeddings (V2 only)
+│   │   ├── schema_validator.py      # JSON schema validation, parsing (shared)
+│   │   ├── metrics_collector.py     # Prometheus metrics, structured logging (shared)
+│   │   ├── feedback_processor.py    # User corrections, RAG KB updates (V2 only)
+│   │   └── gmail_labeler.py         # Gmail label application (shared)
 │   ├── database/
 │   │   ├── __init__.py
-│   │   ├── connection.py            # SQLite/PostgreSQL connection management
-│   │   ├── repositories.py          # Data access layer (emails, classifications, metrics)
-│   │   └── migrations/              # Schema migrations (Alembic)
+│   │   ├── connection.py            # PostgreSQL connection management (shared)
+│   │   ├── repositories.py          # Data access layer (shared)
+│   │   └── migrations/              # Schema migrations (Alembic) (shared)
 │   ├── api/
 │   │   ├── __init__.py
-│   │   ├── app.py                   # Web framework app initialization
+│   │   ├── app.py                   # FastAPI app initialization (shared)
 │   │   ├── routes/
 │   │   │   ├── __init__.py
-│   │   │   ├── metrics.py           # GET /metrics (current + historical)
-│   │   │   ├── health.py            # GET /health (system status)
-│   │   │   ├── classifications.py   # GET /classifications, POST /reclassify
-│   │   │   └── admin.py             # POST /rag/reindex, POST /queue/clear
-│   │   └── middleware.py            # Auth, CORS, logging
-│   ├── worker/
+│   │   │   ├── metrics.py           # GET /metrics (current + historical) (shared)
+│   │   │   ├── health.py            # GET /health (system status) (shared)
+│   │   │   ├── classifications.py   # GET /classifications, POST /reclassify (shared)
+│   │   │   └── admin.py             # POST /rag/reindex, POST /queue/clear (shared)
+│   │   └── middleware.py            # Auth, CORS, logging (shared)
+│   ├── worker/                      # V2 ONLY - replaces n8n workflows
 │   │   ├── __init__.py
 │   │   ├── scheduler.py             # APScheduler setup, job definitions
 │   │   ├── classifier_worker.py     # Classification job execution
 │   │   └── rag_indexer.py           # Background RAG re-indexing
 │   └── utils/
 │       ├── __init__.py
-│       ├── crypto.py                # AES-256 encryption/decryption
-│       ├── circuit_breaker.py       # Circuit breaker pattern implementation
-│       └── retry.py                 # Exponential backoff with jitter
+│       ├── crypto.py                # AES-256 encryption/decryption (shared)
+│       ├── circuit_breaker.py       # Circuit breaker pattern implementation (V2 only)
+│       └── retry.py                 # Exponential backoff with jitter (V2 only)
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py                  # Pytest fixtures (DB, email samples, mock LLM)
@@ -264,11 +331,46 @@ frontend/
 pyproject.toml                       # Python project metadata (optional)
 ```
 
-**Structure Decision**: Web application with backend worker + frontend dashboard. Backend handles email polling, classification, RAG, and API. Frontend provides real-time metrics visualization. Separate directories for clear separation of concerns. SQLite for development simplicity, PostgreSQL path available for production scale.
+**Structure Decision**:
+
+- **V1**: n8n workflows (visual) + Python API backend + React dashboard
+  - n8n handles: Email polling, RAG retrieval, LLM classification, database writes
+  - Python handles: Dashboard API, Gmail labeling, metrics collection
+- **V2**: Pure Python worker + Python API backend + React dashboard (same UI)
+  - Python handles: ALL workflow logic (replaces n8n)
+  - Same: Dashboard API, React UI, database schema, monitoring
+- **Shared Infrastructure**: PostgreSQL database schema, FastAPI routes, React components, Docker Compose, Grafana dashboards
+- **Migration Path**: V1 validates taxonomy → V2 adds production features → Seamless switch (same database, same UI)
+
+## Version-Specific Implementation Notes
+
+### V1 (n8n) Implementation Characteristics
+
+- **Speed**: Rapid prototyping with visual workflows (2-3 days to functional system)
+- **Learning Curve**: n8n GUI for workflow logic, minimal Python code
+- **Limitations**: Limited unit testing, harder to debug, n8n overhead (~100ms)
+- **Best For**: Validating taxonomy, testing prompts, proving concept
+- **Components**: n8n workflows + minimal Python (API + Gmail + metrics only)
+
+### V2 (Pure Python) Implementation Characteristics
+
+- **Speed**: Full custom development (5-7 days for production-grade)
+- **Learning Curve**: Python services, testing frameworks, async patterns
+- **Advantages**: Full control, testable, optimized performance, maintainable
+- **Best For**: Production deployment, resume demonstration, learning architecture
+- **Components**: Complete Python codebase (worker + API + utilities)
+
+### Shared Components (No Version Differences)
+
+- PostgreSQL database schema (identical for both versions)
+- React dashboard UI (connects to same FastAPI endpoints)
+- Gmail API integration (same Python service)
+- Grafana + Prometheus monitoring (same metrics)
+- Docker Compose orchestration (services differ, configs shared)
 
 ## Phase 0: Outline & Research
 
-### Research Tasks
+### Research Tasks (Applies to Both Versions)
 
 1. **Python LLM Integration Options**
 
@@ -532,6 +634,11 @@ This will create/update `.roo/CLAUDE.md` with:
 
 **Task Generation Strategy** (executed by /tasks command):
 
+**IMPORTANT**: Tasks will be split into two phases:
+
+- **Phase V1**: n8n workflow implementation (T001-T030, estimated 3-5 days)
+- **Phase V2**: Pure Python worker implementation (T031-T070, estimated 5-7 days)
+
 1. **Load templates and artifacts**:
 
    - Load `.specify/templates/tasks-template.md` as base structure
@@ -539,7 +646,91 @@ This will create/update `.roo/CLAUDE.md` with:
    - Read `contracts/` for API endpoint tasks
    - Read `quickstart.md` for validation tasks
 
-2. **Generate task list** following TDD order:
+2. **Generate task list for V1 (n8n Prototype)**:
+
+   - **Phase V1.A: Foundation** (shared components)
+
+     - Task V1.001: Setup project structure, Docker Compose
+     - Task V1.002: Setup PostgreSQL database, Alembic migrations
+     - Task V1.003: Implement Pydantic models for schema v2
+     - Task V1.004: Setup n8n Docker container
+     - Task V1.005: Create contract tests for JSON schema v2
+
+   - **Phase V1.B: n8n Workflows**
+
+     - Task V1.006: Create IMAP email polling workflow
+     - Task V1.007: Create RAG retrieval workflow (Qdrant integration)
+     - Task V1.008: Create LLM classification workflow (Ollama HTTP)
+     - Task V1.009: Create database persistence workflow
+     - Task V1.010: Connect workflows end-to-end
+     - Task V1.011: Add error handling and retries
+     - Task V1.012: Create RAG indexer background workflow
+
+   - **Phase V1.C: Python Dashboard API** (shared with V2)
+
+     - Task V1.013: Setup FastAPI application
+     - Task V1.014: Implement /metrics endpoints
+     - Task V1.015: Implement /health endpoint
+     - Task V1.016: Implement /classifications endpoints
+     - Task V1.017: Implement /admin endpoints
+     - Task V1.018: Add authentication middleware
+
+   - **Phase V1.D: Gmail Integration** (shared with V2)
+
+     - Task V1.019: Implement Gmail API OAuth setup
+     - Task V1.020: Implement gmail_labeler service
+     - Task V1.021: Add label application to n8n workflow
+
+   - **Phase V1.E: Frontend Dashboard** (shared with V2)
+
+     - Task V1.022: Setup React + Vite project
+     - Task V1.023: Implement MetricsCard component
+     - Task V1.024: Implement TimeSeriesChart component
+     - Task V1.025: Implement CategoryDistribution component
+     - Task V1.026: Implement ActivityFeed component
+     - Task V1.027: Connect to FastAPI backend
+
+   - **Phase V1.F: Monitoring** (shared with V2)
+     - Task V1.028: Setup Prometheus metrics collection
+     - Task V1.029: Setup Grafana dashboards
+     - Task V1.030: Validate V1 end-to-end with quickstart.md
+
+3. **Generate task list for V2 (Pure Python Production)**:
+
+   - **Phase V2.A: Python Worker Foundation**
+
+     - Task V2.001: Implement email_poller service (replace n8n IMAP)
+     - Task V2.002: Implement queue_manager service (replace n8n queue)
+     - Task V2.003: Implement rag_retriever service (replace n8n Qdrant)
+     - Task V2.004: Implement llm_classifier service (replace n8n HTTP)
+     - Task V2.005: Implement feedback_processor service
+     - Task V2.006: Add circuit breaker and retry utilities
+
+   - **Phase V2.B: Worker Orchestration**
+
+     - Task V2.007: Implement classifier_worker (orchestrate services)
+     - Task V2.008: Implement scheduler (APScheduler)
+     - Task V2.009: Implement rag_indexer background task
+     - Task V2.010: Add graceful shutdown handling
+
+   - **Phase V2.C: Testing & Validation**
+
+     - Task V2.011: Unit tests for email_poller
+     - Task V2.012: Unit tests for rag_retriever
+     - Task V2.013: Unit tests for llm_classifier
+     - Task V2.014: Integration test: poll_classify_persist
+     - Task V2.015: Integration test: idempotency
+     - Task V2.016: Integration test: feedback_loop
+     - Task V2.017: Performance benchmarking (<5s median target)
+
+   - **Phase V2.D: Migration & Validation**
+     - Task V2.018: A/B test V1 vs V2 (same database)
+     - Task V2.019: Validate identical classification results
+     - Task V2.020: Performance comparison report
+     - Task V2.021: Switch from V1 to V2 in production
+     - Task V2.022: Decommission n8n workflows
+
+4. **Original task list** (for reference, now split into V1/V2):
 
    - **Phase A: Foundation** (models, schemas, config)
 
@@ -604,7 +795,7 @@ This will create/update `.roo/CLAUDE.md` with:
      - Task 039: Generate API documentation [depends: 020-023]
      - Task 040: Prepare demo data and screenshots for resume [depends: 036]
 
-3. **Task Ordering Rules**:
+5. **Task Ordering Rules**:
 
    - Contract tests before implementation
    - Models before services before API before UI
@@ -612,7 +803,7 @@ This will create/update `.roo/CLAUDE.md` with:
    - Integration tests after all components implemented
    - Validation after all tests passing
 
-4. **Estimated Breakdown**:
+6. **Estimated Breakdown**:
    - Phase A: 5 tasks (foundation)
    - Phase B: 3 tasks (contract tests)
    - Phase C: 6 tasks (core services)
