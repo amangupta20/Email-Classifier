@@ -55,7 +55,7 @@
 ### Contract Tests (Shared)
 
 - [x] T007 [P] Add JSON schema v2 contract suite in [`backend/tests/contract/test_schema_v2.py`](backend/tests/contract/test_schema_v2.py) using `classification_schema_v2.json` fixtures — Enforces deterministic classifier output — Depends on: T006
-- [ ] T008 [P] Add dashboard API contract tests in [`backend/tests/contract/test_dashboard_api.py`](backend/tests/contract/test_dashboard_api.py) covering `/metrics`, `/metrics/timeseries`, `/classifications`, `/classifications/reclassify`, `/health`, `/admin` endpoints — Locks API surface before implementation — Depends on: T006
+- [x] T008 [P] Add dashboard API contract tests in [`backend/tests/contract/test_dashboard_api.py`](backend/tests/contract/test_dashboard_api.py) covering `/metrics`, `/metrics/timeseries`, `/classifications`, `/classifications/reclassify`, `/health`, `/admin` endpoints — Locks API surface before implementation — Depends on: T006
 - [ ] T009 [P] Add metrics format validation in [`backend/tests/contract/test_metrics_payloads.py`](backend/tests/contract/test_metrics_payloads.py) — Ensures observability payloads stay schema-aligned — Depends on: T006
 
 ### Integration Scenarios (Shared Quickstart)
