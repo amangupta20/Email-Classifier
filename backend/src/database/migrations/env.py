@@ -5,6 +5,26 @@ from sqlalchemy import pool
 
 from alembic import context
 
+# Import the Base metadata from our models
+import sys
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', '.env')
+load_dotenv(dotenv_path)
+
+# Add the backend directory to the Python path
+backend_path = os.path.join(os.path.dirname(__file__), '..', '..', '..')
+if backend_path not in sys.path:
+    sys.path.insert(0, backend_path)
+from src.database import Base
+# Import all models to ensure they are registered with SQLAlchemy's metadata
+from src.database.models import (
+    Email, ClassificationResult, Tag, ClassificationCycle,
+    SystemConfig, UserFeedback, DashboardMetric, SystemHealthStatus
+)
+
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
@@ -14,11 +34,16 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+# Override the sqlalchemy.url from environment variable if available
+import os
+if os.environ.get('DATABASE_URL'):
+    config.set_main_option('sqlalchemy.url', os.environ.get('DATABASE_URL'))
+
 # add your model's MetaData object here
 # for 'autogenerate' support
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
-target_metadata = None
+target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
