@@ -4,3 +4,6 @@
 .venv
 .gemini
 .qwen
+.claude
+.kilocode
+.opencode
