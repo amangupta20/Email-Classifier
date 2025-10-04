@@ -60,6 +60,16 @@
    - Integration requirements
    - Security/compliance needs
 
+## Clarifications
+
+### Session 2025-10-04
+
+- Q: Email source and scope for classification → A: Multiple IMAP accounts (Gmail, Outlook, university email, etc.)
+- Q: Classification confidence threshold business tolerance → A: Moderate: Accept 10-15% unclassified for higher precision
+- Q: Local LLM deployment hardware constraints → A: Consumer laptop (8-16GB RAM, acceptable 2-3 minutes per email)
+- Q: Gmail label sync behavior with existing labels → A: Merge with existing user labels, avoid conflicts
+- Q: Taxonomy governance scope (fixed vs customizable) → A: Hybrid: core categories fixed, user can add extensions
+
 ---
 
 ## User Scenarios & Testing _(mandatory)_
@@ -119,7 +129,7 @@ As an email user, I want the classification results (tags) to appear as Gmail la
 
 - **FR-001** 🔵🟢: System MUST periodically scan for new emails at a configurable interval (EMAIL*POLL_INTERVAL, default 30 seconds). \_V1: n8n IMAP Trigger node; V2: Python imap-tools with APScheduler*
 - **FR-002** 🟣: System MUST detect and enqueue only emails not yet classified using idempotency key derived from hash(message*id + schema_version). \_Same logic in both versions*
-- **FR-003** 🟣: System MUST assign at least one primary category from the hierarchical taxonomy; emails below confidence threshold flagged for review rather than force-categorized as "Unclassified". _Same classification logic_
+- **FR-003** 🟣: System MUST assign at least one primary category from the hierarchical taxonomy; emails below confidence threshold (0.6) flagged for review, with target unclassified rate of 10-15% for higher precision. _Same classification logic_
 - **FR-004**: System MUST support the comprehensive hierarchical tag taxonomy defined in constitution v2 including Academic (6 subtags), Career (5 subtags), Administrative (5 subtags), Extracurricular (5 subtags), Time-Sensitive (5 subtags), Financial (4 subtags), Personal (3 subtags), Learning (4 subtags), Promotions (3 subtags), System (3 subtags), and Spam (3 subtags).
 - **FR-005**: System MUST support taxonomy expansion through schema versioning (semantic versioning: MAJOR for breaking changes, MINOR for additive changes) with backward-compatible migration paths.
 - **FR-006**: System MUST persist classification results including message_id, primary_category, secondary_categories (up to 3), priority, deadline_utc, confidence (0.0-1.0, two decimal precision), rationale (max 200 chars), detected_entities, sentiment, action_items, thread_context, rag_context_used, and schema_version.
@@ -127,7 +137,7 @@ As an email user, I want the classification results (tags) to appear as Gmail la
 - **FR-008**: System MUST handle failures without aborting batch processing: exponential backoff for transient errors, circuit breaker (5 failures → 60s open), poison message quarantine after 5 retries with structured error context.
 - **FR-009**: System MUST skip re-processing via idempotency checks; reclassification triggered manually via "force reclassify" action, on taxonomy version changes, or when user feedback indicates misclassification.
 - **FR-010**: System MUST maintain ordering integrity using stable message identifiers and timestamp-based processing with exactly-once enqueue semantics.
-- **FR-011**: System MUST support configurable per-message classification timeout (derived from LLM_MAX_TOKENS and model inference speed, typically 10-15s per email, with 95th percentile target <12s).
+- **FR-011**: System MUST support configurable per-message classification timeout (derived from LLM_MAX_TOKENS and model inference speed, consumer laptop deployment with 2-3 minutes per email acceptable, with 95th percentile target <150s).
 - **FR-012**: System MUST log structured metrics per cycle: poll_latency, classify_latency, rag_retrieval_latency, queue_depth, emails_scanned, emails_classified, emails_failed, retry_count, schema_parse_failures, category_distribution, rag_hit_rate, cycle_duration_ms.
 - **FR-013**: System MUST provide manual "force reclassify" action in first version for debugging and taxonomy evolution support.
 - **FR-014**: System MUST handle concurrent email arrival using snapshot-based polling with monotonic cursor advancement (last_seen_timestamp) to prevent duplication or loss during active cycles.
@@ -141,8 +151,8 @@ As an email user, I want the classification results (tags) to appear as Gmail la
 - **FR-022**: System MUST validate JSON against schema v2: reject unknown fields (fail-fast), enforce required fields, validate ranges/enums, log validation failures with raw output preserved for forensics, increment schema_parse_failures metric.
 - **FR-023**: System MUST support feedback loops in first version: user corrections stored in feedback log and incorporated into RAG knowledge base for improved future classifications (feedback_incorporation_lag metric tracks update latency).
 - **FR-024**: System MUST use email message_id as primary identifier; if missing, generate stable fallback via hash(from + subject + date + first_100_chars_body).
-- **FR-025**: System MUST achieve poll-to-tag median latency <5s (light load), 95th percentile <12s, ensuring classification results available within one polling cycle for typical inbox volumes.
-- **FR-026**: System MUST enforce taxonomy governance: categories defined in versioned constitution, changes require schema version bump, migration testing with historical data, and release notes documentation; ad-hoc tags rejected at validation layer.
+- **FR-025**: System MUST achieve poll-to-tag median latency <60s (light load), 95th percentile <180s, ensuring classification results available within one polling cycle for typical inbox volumes on consumer laptop hardware.
+- **FR-026**: System MUST enforce taxonomy governance: core categories defined in versioned constitution (Academic, Career, Administrative, etc.), user extensions allowed, changes require schema version bump, migration testing with historical data, and release notes documentation; ad-hoc tags rejected at validation layer.
 - **FR-027**: System MUST handle empty inbox cycles as successful no-ops: emit metrics showing zero processed count, advance polling cursor, log at INFO level, maintain scheduler health.
 - **FR-028**: System MUST redact sensitive fields in logs: full email bodies excluded from INFO/WARN/ERROR logs (DEBUG only in dev), PII patterns (email addresses, phone numbers) masked in production logs using configurable regex filters, raw credentials never logged.
 - **FR-029**: System MUST track unclassified rate metric: count of emails with confidence <threshold / total processed, aggregated hourly/daily for trend analysis and RAG effectiveness monitoring.
@@ -166,7 +176,7 @@ As an email user, I want the classification results (tags) to appear as Gmail la
 - **FR-044**: Dashboard MUST log all user-initiated actions (reclassify requests, manual corrections, configuration changes) to audit trail with username and timestamp for accountability.
 - **FR-045**: Dashboard MUST export metrics data: downloadable CSV or JSON format for offline analysis, covering selected time range and metric categories; useful for generating performance reports for project documentation.
 - **FR-046** 🟣: System MUST integrate with Gmail API to apply classification tags as Gmail labels, enabling native inbox organization. _Shared Python Gmail service for both V1 and V2_
-- **FR-047** 🟣: System MUST create Gmail labels matching the classification taxonomy if they don't exist, using hierarchical paths (e.g., "Academic/Exams") for subcategories. _Same Gmail service_
+- **FR-047** 🟣: System MUST create Gmail labels matching the classification taxonomy if they don't exist, merging with existing user labels and avoiding conflicts with existing label names. _Same Gmail service_
 - **FR-048** 🟣: System MUST handle Gmail API rate limits and authentication errors with exponential backoff retry (max 5 attempts), queuing failed label applications for later processing without blocking the classification pipeline. _Same retry logic_
 - **FR-049**: System MUST support configurable label colors and nested label structure in Gmail to match the hierarchical taxonomy (primary categories as parent labels, subcategories as child labels).
 - **FR-050**: System MUST provide a mechanism to sync existing Gmail labels back to the classification system for feedback loop integration (optional, for learning from manual user corrections).
