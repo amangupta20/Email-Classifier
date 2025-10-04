@@ -117,8 +117,8 @@ As an email user, I want the classification results (tags) to appear as Gmail la
 - 🟢 **V2** = Pure Python implementation
 - 🟣 **Shared** = Common to both versions (database, UI, monitoring)
 
-- **FR-001** 🔵🟢: System MUST periodically scan for new emails at a configurable interval (EMAIL_POLL_INTERVAL, default 30 seconds). _V1: n8n IMAP Trigger node; V2: Python imap-tools with APScheduler_
-- **FR-002** 🟣: System MUST detect and enqueue only emails not yet classified using idempotency key derived from hash(message_id + schema_version). _Same logic in both versions_
+- **FR-001** 🔵🟢: System MUST periodically scan for new emails at a configurable interval (EMAIL*POLL_INTERVAL, default 30 seconds). \_V1: n8n IMAP Trigger node; V2: Python imap-tools with APScheduler*
+- **FR-002** 🟣: System MUST detect and enqueue only emails not yet classified using idempotency key derived from hash(message*id + schema_version). \_Same logic in both versions*
 - **FR-003** 🟣: System MUST assign at least one primary category from the hierarchical taxonomy; emails below confidence threshold flagged for review rather than force-categorized as "Unclassified". _Same classification logic_
 - **FR-004**: System MUST support the comprehensive hierarchical tag taxonomy defined in constitution v2 including Academic (6 subtags), Career (5 subtags), Administrative (5 subtags), Extracurricular (5 subtags), Time-Sensitive (5 subtags), Financial (4 subtags), Personal (3 subtags), Learning (4 subtags), Promotions (3 subtags), System (3 subtags), and Spam (3 subtags).
 - **FR-005**: System MUST support taxonomy expansion through schema versioning (semantic versioning: MAJOR for breaking changes, MINOR for additive changes) with backward-compatible migration paths.
@@ -147,7 +147,7 @@ As an email user, I want the classification results (tags) to appear as Gmail la
 - **FR-028**: System MUST redact sensitive fields in logs: full email bodies excluded from INFO/WARN/ERROR logs (DEBUG only in dev), PII patterns (email addresses, phone numbers) masked in production logs using configurable regex filters, raw credentials never logged.
 - **FR-029**: System MUST track unclassified rate metric: count of emails with confidence <threshold / total processed, aggregated hourly/daily for trend analysis and RAG effectiveness monitoring.
 - **FR-030**: System MUST provide manual correction mechanism: user specifies message_id + corrected_category, system updates classification in metadata DB, logs correction to feedback store, triggers incremental RAG knowledge base update, optionally re-processes similar pending emails.
-- **FR-031** 🔵🟢: System MUST implement Retrieval-Augmented classification in first version: retrieve top K=5 relevant context chunks from RAG knowledge base containing historical classifications, domain context (course codes, company names, professor names), temporal patterns (semester schedules), and user preferences; inject into LLM prompt; track rag_context_used in output; maintain vector index; weekly batch re-indexing via RAG_REINDEX_CRON; incremental updates on new classifications; opt-in via RAG_ENABLED flag (default true). _V1: Qdrant vector store (n8n integration); V2: FAISS/Hnswlib (embedded Python libraries)_
+- **FR-031** 🟣: System MUST implement Retrieval-Augmented classification as a shared service: retrieve top K=5 relevant context chunks from Qdrant vector knowledge base containing historical classifications, domain context (course codes, company names, professor names), temporal patterns (semester schedules), and user preferences; inject into LLM prompt; track rag*context_used in output; maintain vector index; weekly batch re-indexing via RAG_REINDEX_CRON; incremental updates on new classifications; opt-in via RAG_ENABLED flag (default true). \_Shared: Qdrant vector store accessed via HTTP API by both V1 and V2*
 
 ### User Interface Requirements
 
@@ -181,11 +181,11 @@ As an email user, I want the classification results (tags) to appear as Gmail la
 - **ClassificationCycle** 🟣: Represents one periodic run; attributes: cycle ID, start/end timestamps, counts (scanned, classified, failed, unclassified), duration. _Same schema_
 - **OverrideAction** 🟣 (future/conditional): Manual user correction; attributes: email ID, previous tags, new tags, reason, timestamp. _Same schema_
 - **SystemConfig** 🟣: Configuration store; attributes: polling interval, confidence threshold(s), enabled tags, retry policy, maximum parallelism. _Same schema_
-- **DashboardMetric** 🟣: Aggregated performance metric; attributes: metric_name, value, timestamp, aggregation_period (5s/1h/1d), unit. _Same schema_
-- **MetricTimeSeriesPoint** 🟣: Historical data point; attributes: metric_name, timestamp, value, labels (category, confidence_bucket, etc.). _Same schema_
-- **SystemHealthStatus** 🟣: Current system state; attributes: component_name, status (healthy/degraded/down), last_check_timestamp, error_message. _Same schema_
-- **GmailLabel** 🟣: Gmail label metadata; attributes: gmail_label_id, name, display_name, color_id, nested_parent_id, created_timestamp, synced_timestamp. _Same schema_
-- **LabelApplication** 🟣: Gmail label application log; attributes: email_id, gmail_message_id, label_id, applied_timestamp, status (success|failed|pending), retry_count. _Same schema_
+- **DashboardMetric** 🟣: Aggregated performance metric; attributes: metric*name, value, timestamp, aggregation_period (5s/1h/1d), unit. \_Same schema*
+- **MetricTimeSeriesPoint** 🟣: Historical data point; attributes: metric*name, timestamp, value, labels (category, confidence_bucket, etc.). \_Same schema*
+- **SystemHealthStatus** 🟣: Current system state; attributes: component*name, status (healthy/degraded/down), last_check_timestamp, error_message. \_Same schema*
+- **GmailLabel** 🟣: Gmail label metadata; attributes: gmail*label_id, name, display_name, color_id, nested_parent_id, created_timestamp, synced_timestamp. \_Same schema*
+- **LabelApplication** 🟣: Gmail label application log; attributes: email*id, gmail_message_id, label_id, applied_timestamp, status (success|failed|pending), retry_count. \_Same schema*
 
 ### Non-Functional Requirements
 
@@ -236,7 +236,7 @@ As an email user, I want the classification results (tags) to appear as Gmail la
 
 **Architecture**:
 
-- Python services handle: Email polling (imap-tools) → RAG retrieval (FAISS/Hnswlib) → LLM classification (ollama-python) → Database persistence (SQLAlchemy async)
+- Python services handle: Email polling (imap-tools) → RAG retrieval (Qdrant API) → LLM classification (ollama-python) → Database persistence (SQLAlchemy async)
 - Orchestration: APScheduler for scheduling, custom queue manager
 - Shared: Same PostgreSQL schema, same React UI, same monitoring
 

@@ -52,7 +52,7 @@ Build a local-first email classification system in **two progressive versions**:
 **Version 1 (n8n-based)**:
 
 - **Workflow Engine**: n8n (self-hosted, Docker)
-- **n8n Nodes**: IMAP Email, HTTP Request (Ollama), Qdrant Vector Store, PostgreSQL, Gmail
+- **n8n Nodes**: IMAP Email, HTTP Request (Ollama), HTTP Request (Qdrant API), PostgreSQL, Gmail
 - **LLM Inference**: Ollama (Qwen 3 8B) via HTTP Request nodes
 - **Vector Store**: Qdrant (accessed via n8n Vector Store nodes)
 - **Database**: PostgreSQL (shared with V2)
@@ -65,7 +65,7 @@ Build a local-first email classification system in **two progressive versions**:
 **Version 2 (Pure Python)**:
 
 - **LLM Inference**: Options evaluated in research phase
-- **Vector Store**: FAISS or Hnswlib for RAG embeddings
+- **Vector Store**: Qdrant for RAG embeddings (shared service via API)
 - **Embeddings**: sentence-transformers (all-MiniLM-L6-v2)
 - **Database**: PostgreSQL (same schema as V1)
 - **Web Framework**: FastAPI (dashboard + worker API)
@@ -85,8 +85,8 @@ Build a local-first email classification system in **two progressive versions**:
 
 **Storage**:
 
-- SQLite for metadata (message index, classifications, action items, thread context)
-- FAISS index file for vector embeddings (~10-50MB typical)
+- PostgreSQL for metadata (message index, classifications, action items, thread context)
+- Qdrant for vector embeddings (shared RAG service via API)
 - Append-only JSONL for audit trail
 - Optional AES-256 encrypted email bodies (cryptography library)
 
@@ -157,7 +157,7 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ✅ **II. Local-First Privacy**: Self-hosted Qwen 3 model, no external API calls with email content, optional local encryption for stored emails, aggregate-only analytics export.
 
-✅ **III. RAG-Enhanced Context Awareness**: Local FAISS/Hnswlib vector store, sentence-transformers embeddings, top-K=5 context retrieval, incremental updates, weekly batch re-indexing.
+✅ **III. RAG-Enhanced Context Awareness**: Shared Qdrant vector service accessed via API, sentence-transformers embeddings, top-K=5 context retrieval, incremental updates, weekly batch re-indexing.
 
 ✅ **IV. Deterministic Contracts & Test-First**: Pydantic v2 for strict JSON schema validation (v2), snapshot tests for schema, contract tests before implementation, versioned schemas with migration notes.
 
@@ -175,7 +175,7 @@ _GATE: Must pass before Phase 0 research. Re-check after Phase 1 design._
 
 ✅ **Reliability**: Circuit breaker (5 failures → 60s open), exponential backoff with jitter, stale queue sweeper (>15min), corrupt JSON forensic storage, retry with simplified prompt.
 
-✅ **Storage**: SQLite for metadata (message index, action items, thread context), FAISS for vectors, optional encrypted email bodies, audit JSONL log, weekly RAG snapshots (last 4 retained).
+✅ **Storage**: PostgreSQL for metadata (message index, action items, thread context), Qdrant for vectors (shared service), optional encrypted email bodies, audit JSONL log, weekly RAG snapshots (last 4 retained).
 
 ✅ **Configuration**: All required env vars from constitution (EMAIL_POLL_INTERVAL, QWEN_MODEL_PATH, RAG settings, storage settings, performance tuning).
 
@@ -245,7 +245,7 @@ backend/
 │   │   ├── email_poller.py          # IMAP polling, idempotency checks (V2 only)
 │   │   ├── queue_manager.py         # Message queue with exactly-once semantics (V2 only)
 │   │   ├── llm_classifier.py        # Qwen 3 integration, prompt construction (V2 only)
-│   │   ├── rag_retriever.py         # FAISS/Hnswlib vector search, embeddings (V2 only)
+│   │   ├── rag_retriever.py         # Qdrant API client for vector search, embeddings (shared service)
 │   │   ├── schema_validator.py      # JSON schema validation, parsing (shared)
 │   │   ├── metrics_collector.py     # Prometheus metrics, structured logging (shared)
 │   │   ├── feedback_processor.py    # User corrections, RAG KB updates (V2 only)
@@ -291,8 +291,8 @@ backend/
 │       ├── test_feedback_loop.py    # User corrections → RAG update
 │       └── test_dashboard_api.py    # Dashboard endpoints
 ├── data/                            # Runtime data (gitignored)
-│   ├── emails.db                    # SQLite database
-│   ├── rag.index                    # FAISS index file
+│   ├── emails.db                    # PostgreSQL database
+│   ├── qdrant/                      # Qdrant vector data (managed separately)
 │   ├── audit.jsonl                  # Audit log
 │   └── prompts/
 │       └── few_shot_v2.json         # Few-shot examples
@@ -701,7 +701,7 @@ This will create/update `.roo/CLAUDE.md` with:
 
      - Task V2.001: Implement email_poller service (replace n8n IMAP)
      - Task V2.002: Implement queue_manager service (replace n8n queue)
-     - Task V2.003: Implement rag_retriever service (replace n8n Qdrant)
+     - Task V2.003: Implement rag_retriever service (Qdrant API client)
      - Task V2.004: Implement llm_classifier service (replace n8n HTTP)
      - Task V2.005: Implement feedback_processor service
      - Task V2.006: Add circuit breaker and retry utilities
