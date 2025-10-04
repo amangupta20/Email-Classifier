@@ -1,0 +1,36 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+scrape_configs:
+  # Prometheus itself
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Email-Classifier FastAPI application
+  - job_name: "email-classifier-api"
+    static_configs:
+      - targets: ["host.docker.internal:8080"]
+    scrape_interval: 5s
+    metrics_path: "/metrics"
+    scheme: "http"
+
+  # n8n workflow engine (for V1) - only enabled if N8N_HOST is set
+  - job_name: "n8n"
+    static_configs:
+      - targets: ["${N8N_HOST:host.docker.internal:5678}"]
+    scrape_interval: 30s
+    metrics_path: "/metrics"
+    scheme: "http"
+
+  # Node Exporter for system metrics (optional)
+  - job_name: "node-exporter"
+    static_configs:
+      - targets: ["host.docker.internal:9100"]
+    scrape_interval: 30s
+    scheme: "http"
