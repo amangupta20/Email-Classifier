@@ -55,8 +55,8 @@ class Email(Base):
     )
 
     # Relationships
-    classification = relationship("ClassificationResult", backref="email", uselist=False, cascade="all, delete-orphan")
-    feedback_list = relationship("UserFeedback", backref="email", cascade="all, delete-orphan")
+    classification = relationship("ClassificationResult", back_populates="email", uselist=False, cascade="all, delete-orphan")
+    feedback_list = relationship("UserFeedback", back_populates="email", cascade="all, delete-orphan")
 
     # Indexes
     __table_args__ = (
@@ -111,7 +111,7 @@ class ClassificationResult(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=func.now())
 
     # Relationships
-    email = relationship("Email", backref="classification")
+    email = relationship("Email", back_populates="classification")
 
     # Constraints
     __table_args__ = (
@@ -232,7 +232,7 @@ class UserFeedback(Base):
     incorporated = Column(BOOLEAN, nullable=False, default=False)
 
     # Relationships
-    email = relationship("Email", backref="feedback_list")
+    email = relationship("Email", back_populates="feedback_list")
 
     # Indexes
     __table_args__ = (

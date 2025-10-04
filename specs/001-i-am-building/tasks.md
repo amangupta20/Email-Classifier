@@ -45,8 +45,8 @@
 - [x] T002 Configure Alembic scaffolding in [`backend/alembic.ini`](backend/alembic.ini) and [`backend/src/database/migrations/env.py`](backend/src/database/migrations/env.py) — Enables versioned schema delivery — Depends on: T001
 - [x] T003 [P] Generate initial migration for entities defined in [`data-model.md`](specs/001-i-am-building/data-model.md) — Creates authoritative DB schema for both versions — Depends on: T002
 - [x] T004 [P] Implement configuration loader in [`backend/src/config.py`](backend/src/config.py) with Pydantic Settings validating `.env` contract — Guarantees deterministic environment checks — Depends on: T001
-- [ ] T005 [P] Harden Docker Compose stack with services for Ollama, PostgreSQL/Supabase, Qdrant, Prometheus, Grafana, n8n — Provides deployable infra baseline — Depends on: T001
-- [ ] T006 [P] Provision shared fixtures in [`backend/tests/conftest.py`](backend/tests/conftest.py) for DB, IMAP, Ollama, Qdrant, Gmail stubs — Supports TDD workflow — Depends on: T001
+- [x] T005 [P] Harden Docker Compose stack with services for Ollama, PostgreSQL/Supabase, Qdrant, Prometheus, Grafana, n8n — Provides deployable infra baseline — Depends on: T001
+- [x] T006 [P] Provision shared fixtures in [`backend/tests/conftest.py`](backend/tests/conftest.py) for DB, IMAP, Ollama, Qdrant, Gmail stubs — Supports TDD workflow — Depends on: T001
 
 ---
 
