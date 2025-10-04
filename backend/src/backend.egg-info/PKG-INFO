@@ -1,0 +1,31 @@
+Metadata-Version: 2.4
+Name: backend
+Version: 0.1.0
+Summary: Add your description here
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: alembic>=1.16.5
+Requires-Dist: fastapi>=0.118.0
+Requires-Dist: psycopg2-binary>=2.9.10
+Requires-Dist: python-dotenv>=1.1.1
+Requires-Dist: pydantic>=2.5.0
+Requires-Dist: pydantic-settings>=2.1.0
+Requires-Dist: sqlalchemy>=2.0.43
+Requires-Dist: pytest>=8.4.2
+Requires-Dist: pytest-postgresql>=7.0.2
+Requires-Dist: pytest-asyncio>=1.2.0
+Requires-Dist: factory-boy>=3.3.3
+Requires-Dist: responses>=0.25.8
+Requires-Dist: aiofiles>=24.1.0
+Requires-Dist: faker>=37.8.0
+Requires-Dist: freezegun>=1.5.5
+Requires-Dist: jsonschema>=4.25.1
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-postgresql>=5.0.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "dev"
+Requires-Dist: factory-boy>=3.3.0; extra == "dev"
+Requires-Dist: responses>=0.23.0; extra == "dev"
+Requires-Dist: aiofiles>=23.0.0; extra == "dev"
+Requires-Dist: faker>=19.0.0; extra == "dev"
+Requires-Dist: freezegun>=1.2.0; extra == "dev"
