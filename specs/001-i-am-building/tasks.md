@@ -41,8 +41,8 @@
 
 ### Setup (shared for V1 & V2)
 
-- [ ] T001 Bring repo state to clean baseline (ensure `.venv`, docker volumes, seed data) — Aligns working copy with plan prerequisites — Depends on: none
-- [ ] T002 Configure Alembic scaffolding in [`backend/alembic.ini`](backend/alembic.ini) and [`backend/src/database/migrations/env.py`](backend/src/database/migrations/env.py) — Enables versioned schema delivery — Depends on: T001
+- [x] T001 Bring repo state to clean baseline (ensure `.venv`, docker volumes, seed data) — Aligns working copy with plan prerequisites — Depends on: none
+- [x] T002 Configure Alembic scaffolding in [`backend/alembic.ini`](backend/alembic.ini) and [`backend/src/database/migrations/env.py`](backend/src/database/migrations/env.py) — Enables versioned schema delivery — Depends on: T001
 - [ ] T003 [P] Generate initial migration for entities defined in [`data-model.md`](specs/001-i-am-building/data-model.md) — Creates authoritative DB schema for both versions — Depends on: T002
 - [ ] T004 [P] Implement configuration loader in [`backend/src/config.py`](backend/src/config.py) with Pydantic Settings validating `.env` contract — Guarantees deterministic environment checks — Depends on: T001
 - [ ] T005 [P] Harden Docker Compose stack with services for Ollama, PostgreSQL/Supabase, Qdrant, Prometheus, Grafana, n8n — Provides deployable infra baseline — Depends on: T001
