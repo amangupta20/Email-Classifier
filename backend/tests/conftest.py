@@ -19,6 +19,7 @@ from freezegun import freeze_time
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from src.config import get_settings, Settings
+from pydantic_settings import SettingsConfigDict
 from src.database.models import (
     Base, Email, ClassificationResult, Tag, ClassificationCycle,
     SystemConfig, UserFeedback, DashboardMetric, SystemHealthStatus
@@ -40,28 +41,53 @@ fake = Faker()
 @pytest.fixture(scope="session")
 def test_settings() -> Settings:
     """Test configuration with safe defaults."""
-    from src.config import DatabaseSettings, LLMSettings, VectorDBSettings, EmailSettings, PerformanceSettings
+    from src.config import DatabaseSettings, LLMSettings, VectorDBSettings, EmailSettings, PerformanceSettings, SecuritySettings
 
-    return Settings(
-        database=DatabaseSettings(
-            db_url="postgresql://test:test@localhost:5432/test_email_classifier"
+    # Create custom settings classes that don't read from env files
+    class TestDatabaseSettings(DatabaseSettings):
+        model_config = SettingsConfigDict(env_file=None)
+    
+    class TestLLMSettings(LLMSettings):
+        model_config = SettingsConfigDict(env_file=None)
+    
+    class TestVectorDBSettings(VectorDBSettings):
+        model_config = SettingsConfigDict(env_file=None)
+    
+    class TestEmailSettings(EmailSettings):
+        model_config = SettingsConfigDict(env_file=None)
+    
+    class TestPerformanceSettings(PerformanceSettings):
+        model_config = SettingsConfigDict(env_file=None)
+    
+    class TestSecuritySettings(SecuritySettings):
+        model_config = SettingsConfigDict(env_file=None)
+    
+    class TestSettings(Settings):
+        model_config = SettingsConfigDict(env_file=None)
+    
+    return TestSettings(
+        database=TestDatabaseSettings(
+            DB_URL="postgresql://test:test@localhost:5432/test_email_classifier"
         ),
-        llm=LLMSettings(
+        llm=TestLLMSettings(
             ollama_host="http://localhost:11434",
             qwen_model_name="qwen3:8b"
         ),
-        vector_db=VectorDBSettings(
+        vector_db=TestVectorDBSettings(
             qdrant_host="localhost",
             qdrant_port=6333
         ),
-        email=EmailSettings(
+        email=TestEmailSettings(
             imap_server="imap.test.com",
-            imap_username="test@test.com",
-            imap_password="test123"
+            IMAP_USERNAME="test@test.com",
+            IMAP_PASSWORD="test123"
         ),
-        performance=PerformanceSettings(
+        performance=TestPerformanceSettings(
             email_poll_interval=30,
             classify_concurrency=2
+        ),
+        security=TestSecuritySettings(
+            ENCRYPTION_KEY="a" * 32
         )
     )
 
@@ -82,8 +108,12 @@ def mock_env_vars(monkeypatch):
 @pytest.fixture(scope="session")
 def test_engine(test_settings):
     """Create test database engine."""
+    # Convert regular postgresql URL to asyncpg for SQLAlchemy async support
+    db_url = test_settings.database.db_url.get_secret_value()
+    async_db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
     engine = create_async_engine(
-        test_settings.database.db_url,
+        async_db_url,
         echo=False,
         future=True
     )
@@ -91,7 +121,7 @@ def test_engine(test_settings):
     engine.dispose()
 
 
-@pytest.fixture(scope="function")
+@pytest_asyncio.fixture(scope="function")
 async def db_session(test_engine) -> AsyncSession:
     """Create a fresh database session for each test."""
     async_session = async_sessionmaker(
@@ -111,7 +141,7 @@ async def db_session(test_engine) -> AsyncSession:
         await conn.run_sync(Base.metadata.drop_all)
 
 
-@pytest.fixture(scope="function")
+@pytest_asyncio.fixture(scope="function")
 async def clean_db(db_session):
     """Ensure clean database state."""
     # Delete all data in reverse dependency order
