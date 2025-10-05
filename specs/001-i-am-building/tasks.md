@@ -63,7 +63,7 @@
 - [x] T010 Write failing end-to-end poll→classify→persist test in [`backend/tests/integration/test_poll_classify_persist.py`](backend/tests/integration/test_poll_classify_persist.py) — Validates primary user flow described in spec — Depends on: T006
 - [x] T011 [P] Add idempotency scenario test in [`backend/tests/integration/test_idempotency.py`](backend/tests/integration/test_idempotency.py) — Guarantees duplicate protection — Depends on: T006
 - [x] T012 [P] Add feedback loop test in [`backend/tests/integration/test_feedback_loop.py`](backend/tests/integration/test_feedback_loop.py) — Secures learning requirements — Depends on: T006
-- [ ] T013 [P] Add error-handling/quarantine test in [`backend/tests/integration/test_error_handling.py`](backend/tests/integration/test_error_handling.py) — Covers resilience mandate — Depends on: T006
+- [x] T013 [P] Add error-handling/quarantine test in [`backend/tests/integration/test_error_handling.py`](backend/tests/integration/test_error_handling.py) — Covers resilience mandate — Depends on: T006
 - [ ] T014 [P] Add dashboard realtime regression test in [`backend/tests/integration/test_dashboard_realtime.py`](backend/tests/integration/test_dashboard_realtime.py) — Confirms 5s refresh behavior — Depends on: T006
 - [ ] T015 [P] Add Gmail labeling integration test in [`backend/tests/integration/test_gmail_labels.py`](backend/tests/integration/test_gmail_labels.py) — Guarantees label sync semantics — Depends on: T006
 - [ ] T016 [P] Add monitoring pipeline test validating Prometheus exposure in [`backend/tests/integration/test_metrics_export.py`](backend/tests/integration/test_metrics_export.py) — Protects observability story — Depends on: T006
@@ -76,7 +76,7 @@
 ### V1.A Foundation (Shared Components)
 
 - [x] T018 Populate taxonomy/tag seed migration in [`backend/src/database/migrations/`](backend/src/database/migrations/) — Ensures schema ships with constitution tags — Depends on: T003
-- [ ] T019 Populate `.env.example` & secrets template aligning with [`quickstart.md`](specs/001-i-am-building/quickstart.md) — Removes ambiguity for operators — Depends on: T004
+- [x] T019 Populate `.env.example` & secrets template aligning with [`quickstart.md`](specs/001-i-am-building/quickstart.md) — Removes ambiguity for operators — Depends on: T004
 - [ ] T020 Define Prometheus collectors + Grafana provisioning in [`infra/monitoring/`](infra/monitoring/) — Prepares monitoring stack for V1 validation — Depends on: T005
 
 ### V1.B Workflow Authoring (n8n)
