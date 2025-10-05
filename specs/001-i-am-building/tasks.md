@@ -75,7 +75,7 @@
 
 ### V1.A Foundation (Shared Components)
 
-- [ ] T018 Populate taxonomy/tag seed migration in [`backend/src/database/migrations/`](backend/src/database/migrations/) — Ensures schema ships with constitution tags — Depends on: T003
+- [x] T018 Populate taxonomy/tag seed migration in [`backend/src/database/migrations/`](backend/src/database/migrations/) — Ensures schema ships with constitution tags — Depends on: T003
 - [ ] T019 Populate `.env.example` & secrets template aligning with [`quickstart.md`](specs/001-i-am-building/quickstart.md) — Removes ambiguity for operators — Depends on: T004
 - [ ] T020 Define Prometheus collectors + Grafana provisioning in [`infra/monitoring/`](infra/monitoring/) — Prepares monitoring stack for V1 validation — Depends on: T005
 
