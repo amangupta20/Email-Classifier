@@ -29,6 +29,8 @@ from src.database.enums import (
     EmailStatusType, PriorityType, SentimentType, DeadlineConfidenceType,
     CategoryTypeType, HealthStatusType
 )
+from src.api.app import app as fastapi_app
+from httpx import AsyncClient, ASGITransport
 
 # Initialize faker for generating test data
 fake = Faker()
@@ -451,6 +453,17 @@ def mock_gmail_service():
     }
 
     return mock_service
+
+
+@pytest_asyncio.fixture(scope="function")
+async def api_client() -> AsyncClient:
+    """
+    Provide a test client for the FastAPI application.
+    This client can be used to make requests to the API endpoints in tests.
+    """
+    transport = ASGITransport(app=fastapi_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
 
 
 # ============================================================================
